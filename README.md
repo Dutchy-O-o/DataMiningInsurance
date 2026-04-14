@@ -1,311 +1,254 @@
-# Insurance Claim Cost Prediction - Data Mining Project
+# Smart Insurance Advisor V2.0
 
-An end-to-end data mining project that predicts insurance claim costs using machine learning (XGBoost, LightGBM, GradientBoosting), explains predictions with SHAP (Explainable AI), and delivers personalized health advice through Claude AI - all wrapped in a custom-designed web dashboard.
+[![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
+[![Flask](https://img.shields.io/badge/flask-3.0%2B-black.svg)](https://flask.palletsprojects.com/)
+[![XGBoost](https://img.shields.io/badge/XGBoost-R²_0.88-orange.svg)](https://xgboost.readthedocs.io/)
+[![SHAP](https://img.shields.io/badge/SHAP-Explainable_AI-purple.svg)](https://shap.readthedocs.io/)
+[![Tests](https://img.shields.io/badge/tests-22_passing-brightgreen.svg)](#testing)
+[![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg)](https://www.docker.com/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](#)
 
-## Project Overview
+An end-to-end data mining pipeline that predicts annual insurance claim costs using ensemble machine learning, explains predictions with SHAP (Explainable AI), finds similar historical patients via KNN, supports batch CSV predictions, and delivers personalized health advice through Claude AI — all wrapped in a custom Flask web application.
 
-This project analyzes the `insurance.csv` dataset (1,338 records) to predict annual insurance charges based on demographic and health features. Five regression models were trained and compared. The best model (**XGBoost**) is deployed as an interactive web application with SHAP explainability and Claude AI integration.
+---
+
+## System Architecture
+
+![Architecture Diagram](DataSet/results/architecture_diagram.png)
+
+**Four-layer design:** User Interface → Flask Application → Machine Learning → Data & Storage. DevOps automation (Docker, CI/CD, pytest) supports the entire stack.
+
+---
+
+## Key Features
+
+### Machine Learning
+- **5 models trained & compared:** XGBoost (best), LightGBM, GradientBoosting, Ridge, Linear Regression
+- **Hyperparameter optimization:** RandomizedSearchCV with 40 iterations × 5-fold CV = 600 model fits
+- **Hybrid preprocessing:** Log-transform for linear models, raw target for boosting models
+- **Feature engineering:** smoker×BMI and smoker×age interaction features
+- **Best model:** XGBoost with R²=0.8812, RMSE=$4,295, MAE=$2,498
+
+### Explainable AI
+- **SHAP TreeExplainer** integrated for per-prediction feature attribution
+- **Animated SHAP bar charts** rendered in pure CSS (no matplotlib dependency at runtime)
+- **Global feature importance** analysis (smoking = 82.6% importance)
+
+### Web Application
+- **Real-time predictions** with animated cost counter
+- **Multi-model confidence interval** (Low/Mid/High from 3 boosting models)
+- **What-If Scenarios** — counterfactual analysis ("If you quit smoking: save $X")
+- **Similar Patients (KNN)** — 5 most similar training records with actual costs
+- **Batch CSV Prediction** — upload a CSV, get predictions + top SHAP feature per row
+- **Claude AI Reports** — LLM-generated personalized health advice using SHAP context
+
+### DevOps
+- **Docker** — one-command deployment with `docker-compose up`
+- **GitHub Actions CI/CD** — automated testing on every push (matrix: Python 3.11, 3.12)
+- **22 pytest unit/integration tests** covering preprocessing, models, and endpoints
+- **Cloud-ready** — deployment guides for Render, Railway (see [DEPLOYMENT.md](DEPLOYMENT.md))
+
+---
+
+## Model Performance
+
+| Rank | Model              | R²       | RMSE ($) | MAE ($) |
+|------|--------------------|----------|----------|---------|
+| 1    | **XGBoost**        | **0.8812** | **4,295** | **2,498** |
+| 2    | GradientBoosting   | 0.8775   | 4,361    | 2,467   |
+| 3    | LightGBM           | 0.8755   | 4,396    | 2,583   |
+| 4    | Ridge Regression   | 0.8396   | 4,990    | 2,518   |
+| 5    | Linear Regression  | 0.8377   | 5,020    | 2,526   |
+
+### Feature Importance (XGBoost)
+
+![Feature Importance](DataSet/results/feature_importance.png)
+
+**Key insight:** Smoking alone accounts for 82.6% of prediction importance — 5× the sum of all other features combined.
+
+### Residuals vs Predicted
+
+![Residuals vs Predicted](DataSet/results/residuals_vs_predicted.png)
+
+Approximately homoskedastic residuals centered around zero, with most predictions within ±$5,000.
+
+---
 
 ## Project Structure
 
 ```
 DataMiningInsurance/
-├── README.md
-├── requirements.txt
+├── README.md                           # This file
+├── DEPLOYMENT.md                       # Cloud deployment guide
+├── Dockerfile                          # Production container
+├── docker-compose.yml                  # One-command orchestration
+├── requirements.txt                    # Python dependencies
+├── pytest.ini                          # Test configuration
+├── presentation.html                   # 49-slide project presentation
+├── report.md                           # IEEE-format research report (markdown)
+├── Insurance_Cost_Prediction_IEEE_Report.docx  # Word IEEE report
+│
+├── .github/workflows/
+│   └── ci.yml                          # GitHub Actions CI/CD pipeline
+│
+├── tests/                              # pytest test suite (22 tests)
+│   ├── test_preprocessing.py           # Outlier handling & encoding
+│   ├── test_models.py                  # Model loading & sanity checks
+│   └── test_app_endpoints.py           # Flask endpoint integration tests
 │
 └── DataSet/
-    ├── insurance.csv                # Raw dataset (1,338 rows, 7 columns)
-    ├── eda.ipynb                    # Exploratory Data Analysis notebook
-    ├── preprocessing.py             # Data preprocessing pipeline
-    ├── models.py                    # Model training V2 (feature engineering + tuning)
-    ├── evaluation.py                # Model evaluation & visualization
-    ├── app.py                       # Flask web app (Smart Insurance Advisor V2.0)
+    ├── insurance.csv                   # Raw dataset (1,338 rows)
+    ├── eda.ipynb                       # Exploratory Data Analysis
+    ├── preprocessing.py                # IQR outlier + encoding + scaling
+    ├── models.py                       # 5-model training with RandomizedSearchCV
+    ├── evaluation.py                   # Metrics + visualization
+    ├── app.py                          # Flask web app (654 lines)
     │
-    ├── processed/                   # Preprocessed train/test splits
-    │   ├── X_train.csv
-    │   ├── X_test.csv
-    │   ├── y_train.csv
-    │   ├── y_test.csv
-    │   └── insurance_preprocessed.csv
-    │
-    ├── saved_models/                # Trained model files (.joblib)
-    │   ├── xgboost.joblib
-    │   ├── lightgbm.joblib
-    │   ├── gradient_boosting.joblib
-    │   ├── linear_regression.joblib
-    │   ├── ridge_regression.joblib
-    │   └── feature_names.joblib
-    │
-    ├── results/                     # Evaluation charts (PNG)
-    │   ├── feature_importance.png
-    │   ├── actual_vs_predicted.png
-    │   └── residuals_distribution.png
-    │
-    └── .streamlit/
-        └── secrets.toml             # API key configuration
+    ├── processed/                      # Train/test splits (CSV)
+    ├── saved_models/                   # 5 trained models + feature names (.joblib)
+    └── results/                        # 13 evaluation & EDA charts (PNG)
 ```
 
-## Dataset
-
-**Source:** [Kaggle - Medical Cost Personal Datasets](https://www.kaggle.com/datasets/mirichoi0218/insurance)
-
-| Feature    | Type        | Description                              |
-|------------|-------------|------------------------------------------|
-| `age`      | Integer     | Age of the policyholder (18-64)          |
-| `sex`      | Categorical | Gender (male / female)                   |
-| `bmi`      | Float       | Body Mass Index                          |
-| `children` | Integer     | Number of dependents (0-5)               |
-| `smoker`   | Categorical | Smoking status (yes / no)                |
-| `region`   | Categorical | US residential region (4 regions)        |
-| `charges`  | Float       | **Target** - Annual insurance cost ($)   |
-
-**Dataset Statistics:**
-- 1,338 records, 7 features, 0 missing values
-- Average annual cost: $13,270
-- Smokers (20.5%) pay on average **$32,050** vs non-smokers **$8,434** (3.8x difference)
-- Target variable is right-skewed (skewness = 1.52)
-
 ---
 
-## Pipeline
+## Quick Start
 
-### 1. Exploratory Data Analysis (`eda.ipynb`)
-
-Comprehensive analysis of the dataset through 8 sections:
-
-**Missing Values Analysis:**
-- Zero missing values across all 7 columns
-- Verified with both numerical check and heatmap visualization
-
-**Statistical Summary:**
-
-| Statistic | Age   | BMI    | Children | Charges    |
-|-----------|-------|--------|----------|------------|
-| Mean      | 39.2  | 30.7   | 1.1      | $13,270    |
-| Std       | 14.0  | 6.1    | 1.2      | $12,110    |
-| Min       | 18    | 16.0   | 0        | $1,122     |
-| Max       | 64    | 53.1   | 5        | $63,770    |
-
-**Target Variable (charges) Distribution:**
-
-![Charges Distribution](DataSet/results/actual_vs_predicted.png)
-
-- Right-skewed distribution (skewness = 1.52, kurtosis = 1.61)
-- Majority of policyholders pay under $15,000/year
-- A separate high-cost cluster exists (primarily smokers)
-
-**Correlation Analysis:**
-
-| Feature          | Correlation with Charges |
-|------------------|------------------------:|
-| smoker           |                  0.7873 |
-| age              |                  0.2990 |
-| bmi              |                  0.1983 |
-| children         |                  0.0680 |
-| sex              |                  0.0573 |
-| region_southeast |                  0.0740 |
-
-**Key EDA Visualizations (from `eda.ipynb`):**
-- **Age vs Charges scatter plot** (colored by smoker status) - reveals 3 distinct cost tiers
-- **BMI vs Charges scatter plot** - shows non-linear interaction between BMI and smoking
-- **Categorical box plots** (sex, smoker, region, children vs charges)
-- **Pair plot** - multivariate relationships colored by smoker status
-- **Correlation heatmap** - encoded features correlation matrix
-
-**EDA Conclusions:**
-1. `smoker` is the dominant predictor (r = 0.79)
-2. Three distinct cost clusters visible: non-smokers (low), smokers with normal BMI (medium), smokers with high BMI (high)
-3. `age` shows a clear positive linear trend with cost
-4. `region` and `sex` have negligible impact
-5. The non-linear smoker x BMI interaction suggests boosting models will outperform linear models
-
----
-
-### 2. Preprocessing (`preprocessing.py`)
-
-| Step | Method | Details |
-|------|--------|---------|
-| Outlier Clipping | IQR Method | Applied to `age`, `bmi`, `children` only (target preserved) |
-| Label Encoding | Binary | `sex` (male=1, female=0), `smoker` (yes=1, no=0) |
-| One-Hot Encoding | drop_first | `region` -> 3 dummy columns (baseline=northeast) |
-| Scaling | StandardScaler | `age` (mean=39.21, std=14.04), `bmi` (mean=30.65, std=6.05), `children` (mean=1.09, std=1.21) |
-| Train/Test Split | 80/20 | 1,070 train / 268 test rows (random_state=42) |
-
-**Important design decision:** Outlier clipping was NOT applied to the target variable (`charges`) since this is a regression problem and extreme values represent real high-cost cases that the model must learn.
-
----
-
-### 3. Model Training V2 (`models.py`)
-
-**V2 Enhancements over V1:**
-- **Feature Engineering:** Added `smoker_bmi` and `smoker_age` interaction features (capturing the non-linear clusters found in EDA)
-- **Hybrid target strategy:** Log transform (`np.log1p`) for Linear/Ridge models only; raw target for boosting models (trees handle skewness natively)
-- **Expanded search:** 40 RandomizedSearchCV iterations with regularization parameters
-
-**Model Comparison (V2.0):**
-
-| Rank | Model              | R2     | RMSE    | MAE     | Tuning                      |
-|------|--------------------|--------|---------|---------|------------------------------|
-| 1    | **XGBoost**        | 0.8812 | 4,295   | 2,498   | RandomizedSearchCV (40 iter) |
-| 2    | GradientBoosting   | 0.8775 | 4,361   | 2,467   | RandomizedSearchCV (40 iter) |
-| 3    | LightGBM           | 0.8755 | 4,396   | 2,583   | RandomizedSearchCV (40 iter) |
-| 4    | Ridge Regression   | 0.8396 | 4,990   | 2,518   | log1p target                 |
-| 5    | Linear Regression  | 0.8377 | 5,020   | 2,526   | log1p target                 |
-
-**Key observations:**
-- Boosting models significantly outperform linear models (~5% R2 improvement)
-- Interaction features boosted Linear/Ridge from R2=0.78 (V1) to R2=0.84 (V2)
-- XGBoost best params: `n_estimators=500, max_depth=3, learning_rate=0.01, subsample=0.8`
-- Log transform helped linear models but hurt boosting models (expm1 amplifies errors at high values)
-
----
-
-### 4. Evaluation (`evaluation.py`)
-
-Generates three evaluation charts for the best model (XGBoost):
-
-**Feature Importance:**
-
-![Feature Importance](DataSet/results/feature_importance.png)
-
-| Feature  | Importance |
-|----------|----------:|
-| smoker   |    82.6%  |
-| bmi      |     8.4%  |
-| age      |     4.6%  |
-| children |     1.4%  |
-| region   |     2.2%  |
-| sex      |     0.8%  |
-
-**Actual vs Predicted:**
-
-![Actual vs Predicted](DataSet/results/actual_vs_predicted.png)
-
-- Points closely follow the y=x line, indicating good prediction accuracy
-- Slight deviation at very high cost values (>$50,000)
-
-**Residuals Distribution:**
-
-![Residuals Distribution](DataSet/results/residuals_distribution.png)
-
-- Errors centered near zero (mean error = -$272)
-- Most predictions within +/- $5,000
-- Right tail shows some under-prediction for extreme high-cost cases
-
----
-
-### 5. Web Application V2.0 (`app.py`)
-
-Interactive **Smart Insurance Advisor** built with Flask + custom HTML/CSS/JS:
-
-**Welcome Dashboard:**
-- Dataset overview with 6 animated stat cards (total records, avg cost, smoker %, etc.)
-- Model performance comparison chart (5 models, animated bar chart with R2 scores)
-- Key finding highlight box
-
-**Prediction Engine:**
-- User inputs: Age (slider), Sex, Height/Weight (auto BMI calculation with color-coded category), Children, Smoker, Region
-- Real-time XGBoost prediction with animated cost counter
-- **Confidence interval** using ensemble of 3 boosting models (Low / Avg / High)
-- **What-If scenarios:** "If you quit smoking" and "If BMI reaches 25" with savings calculation
-- Negative savings are automatically filtered (prevents misleading advice)
-
-**SHAP Explainability (XAI):**
-- Per-prediction SHAP analysis rendered as animated HTML/CSS bar chart
-- Purple bars = increases cost, Cyan bars = decreases cost
-- Bars animate on load with staggered cubic-bezier easing
-
-**Claude AI Integration:**
-- SHAP top-2 features dynamically injected into Claude Haiku prompt
-- AI generates personalized "Insurance & Health Optimization Report"
-- Report references specific dollar amounts and SHAP findings
-- Download report as `.md` file
-
-**Design:**
-- Custom dark theme (glassmorphism, gradient backgrounds, Inter font)
-- Fully responsive (mobile-friendly)
-- Zero Streamlit / zero framework - pure HTML/CSS/JS
-- Auto-opens browser on `python app.py`
-
----
-
-## Setup & Installation
+### Option A: Local Python
 
 ```bash
-# Navigate to the project directory
+# Clone and enter
+git clone https://github.com/Dutchy-O-o/DataMiningInsurance.git
 cd DataMiningInsurance
 
-# Create and activate virtual environment
+# Install dependencies
 python -m venv venv
-venv\Scripts\activate          # Windows
-# source venv/bin/activate     # macOS/Linux
-
-# Install all dependencies
+venv\Scripts\activate   # or: source venv/bin/activate
 pip install -r requirements.txt
-```
 
-## Usage
+# (Optional) Add Claude API key for AI reports
+echo "ANTHROPIC_API_KEY=sk-ant-..." > DataSet/.env
 
-### Run the full pipeline
-
-```bash
+# Run the web app
 cd DataSet
-
-# Step 1: Preprocessing
-python preprocessing.py
-
-# Step 2: Train all models (V2 with feature engineering)
-python models.py
-
-# Step 3: Evaluate best model + generate charts
-python evaluation.py
-```
-
-### Run the web application
-
-```bash
-cd DataSet
-
-# (Optional) Add your Claude AI API key for personalized reports
-# Edit .streamlit/secrets.toml:
-# ANTHROPIC_API_KEY = "sk-ant-..."
-
-# Start the application (auto-opens browser)
 python app.py
 ```
 
-> The web app works fully without an API key. Claude AI advice is an optional enhancement.
+Open `http://localhost:5000` in your browser.
 
-### Run the EDA notebook
+### Option B: Docker
 
 ```bash
-cd DataSet
-python -m notebook
-# Open eda.ipynb in the browser and run all cells
+docker-compose up -d
 ```
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for cloud deployment (Render, Railway).
+
+---
+
+## Dataset
+
+**Source:** [Kaggle — Medical Cost Personal Datasets](https://www.kaggle.com/datasets/mirichoi0218/insurance)
+
+| Feature    | Type        | Range          | Description                  |
+|------------|-------------|----------------|------------------------------|
+| `age`      | Integer     | 18–64          | Policyholder age             |
+| `sex`      | Binary      | male / female  | Biological sex               |
+| `bmi`      | Float       | 15.96–53.13    | Body Mass Index              |
+| `children` | Integer     | 0–5            | Number of dependents         |
+| `smoker`   | Binary      | yes / no       | Smoking status               |
+| `region`   | 4-class     | NE/NW/SE/SW    | US region                    |
+| `charges`  | **Float**   | **$1,122–$63,770** | **Annual insurance cost (TARGET)** |
+
+**Stats:** 1,338 records · 0 missing values · 0 duplicates · Target skewness 1.52.
 
 ---
 
 ## Key Findings
 
-1. **Smoking is the #1 cost driver** - 82.6% feature importance, smokers pay 3.8x more ($32,050 vs $8,434 average)
-2. **Non-linear interactions matter** - The smoker x BMI interaction creates distinct cost clusters that only tree-based models can capture effectively
-3. **Boosting >> Linear** - XGBoost (R2=0.88) outperforms Linear Regression (R2=0.84) by capturing these non-linear patterns
-4. **Log transform is model-dependent** - Helps linear models (skewness correction) but hurts boosting models (expm1 error amplification)
-5. **BMI and age are secondary factors** - BMI contributes 8.4% and age 4.6% to predictions
-6. **Region and sex are negligible** - Combined less than 3% importance
+1. **Smoker dominates** — 82.6% feature importance, 3.8× cost multiplier ($32,050 vs $8,434)
+2. **Three cost clusters** — smoker×BMI interaction creates non-linear bands visible in scatter plots
+3. **Boosting >> Linear** — XGBoost R²=0.88 beats Linear R²=0.84 by capturing interactions
+4. **Log transform is model-dependent** — helps linear (skewness 1.52→-0.12), harms boosting (expm1 amplifies errors)
+5. **Model-specific preprocessing wins** — one-size-fits-all pipelines leave accuracy on the table
+6. **SHAP makes predictions actionable** — "smoking adds $12K to your cost" is far more useful than just a number
+
+See the full analysis in [`report.md`](report.md) or the IEEE-format Word report.
+
+---
+
+## Testing
+
+```bash
+pytest tests/ -v
+```
+
+The 22-test suite covers:
+- **Preprocessing** — IQR outlier detection, clipping invariants, dataset integrity
+- **Models** — loading, prediction shape, smoker monotonicity, reproducibility
+- **Endpoints** — `/predict`, `/batch_predict`, `/similar`, `/api/stats`, error handling
+
+```
+tests/test_preprocessing.py ..........  7 passed
+tests/test_models.py .................  7 passed
+tests/test_app_endpoints.py ..........  8 passed
+=========================== 22 passed in 27s ===========================
+```
 
 ---
 
 ## Technologies
 
-| Category | Technologies |
-|----------|-------------|
-| **Language** | Python 3.13 |
-| **Data Analysis** | pandas, numpy, matplotlib, seaborn |
-| **Machine Learning** | scikit-learn, XGBoost, LightGBM |
-| **Explainable AI** | SHAP (TreeExplainer) |
-| **Generative AI** | Anthropic Claude Haiku API |
-| **Web Application** | Flask, HTML5, CSS3, JavaScript |
-| **Serialization** | joblib |
-| **Notebook** | Jupyter |
+| Category              | Technologies                                             |
+|-----------------------|----------------------------------------------------------|
+| **Language**          | Python 3.11+                                             |
+| **Data Analysis**     | pandas, numpy, matplotlib, seaborn                       |
+| **Machine Learning**  | scikit-learn, XGBoost, LightGBM                          |
+| **Explainable AI**    | SHAP (TreeExplainer)                                     |
+| **Generative AI**     | Anthropic Claude Haiku API                               |
+| **Web Application**   | Flask, HTML5, CSS3, Vanilla JavaScript                   |
+| **Testing**           | pytest, pytest-cov                                       |
+| **DevOps**            | Docker, docker-compose, GitHub Actions                   |
+| **Serialization**     | joblib                                                   |
+
+---
+
+## Documentation
+
+- **[report.md](report.md)** — Full IEEE-format technical paper (markdown source)
+- **[Insurance_Cost_Prediction_IEEE_Report.docx](Insurance_Cost_Prediction_IEEE_Report.docx)** — Word version (two-column IEEE layout)
+- **[presentation.html](presentation.html)** — 49-slide project presentation (open in browser)
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** — Deployment guide (local, Docker, Render, Railway)
+
+---
+
+## Contributing
+
+Pull requests are welcome. For major changes, please open an issue first to discuss.
+
+### Development Workflow
+
+```bash
+# Install dev dependencies
+pip install -r requirements.txt
+
+# Run tests before committing
+pytest tests/ -v
+
+# Run the app locally
+cd DataSet && python app.py
+```
+
+---
+
+## License
+
+MIT License — feel free to use this project for learning, research, or production (with attribution).
+
+---
+
+## Acknowledgments
+
+- **Dataset:** Miri Choi via Kaggle
+- **XGBoost:** Chen & Guestrin (2016)
+- **SHAP:** Lundberg & Lee (2017)
+- **Claude AI:** Anthropic

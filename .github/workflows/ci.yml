@@ -1,0 +1,121 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.12']
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libgomp1
+
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install flake8
+
+      - name: Lint with flake8 (critical errors only)
+        run: |
+          # Stop the build if there are Python syntax errors or undefined names
+          flake8 DataSet/ tests/ --count --select=E9,F63,F7,F82 --show-source --statistics --exclude=venv,__pycache__
+
+      - name: Run pytest
+        run: |
+          pytest tests/ -v --tb=short --cov=DataSet --cov-report=xml --cov-report=term
+
+      - name: Upload coverage to Codecov (optional)
+        if: matrix.python-version == '3.11'
+        uses: codecov/codecov-action@v4
+        continue-on-error: true
+        with:
+          file: ./coverage.xml
+          flags: unittests
+
+  docker-build:
+    name: Docker Build Test
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: false
+          tags: smart-insurance-advisor:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Check image size
+        run: docker images smart-insurance-advisor:test
+
+  data-integrity:
+    name: Data & Model Integrity
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install pandas numpy joblib
+
+      - name: Verify dataset integrity
+        run: |
+          python -c "
+          import pandas as pd
+          df = pd.read_csv('DataSet/insurance.csv')
+          assert len(df) == 1338, f'Expected 1338 rows, got {len(df)}'
+          assert df.isnull().sum().sum() == 0, 'Dataset has missing values'
+          print('Dataset OK: 1,338 rows, 0 missing')
+          "
+
+      - name: Verify model files exist
+        run: |
+          ls -la DataSet/saved_models/
+          python -c "
+          import joblib, os
+          models = ['xgboost', 'lightgbm', 'gradient_boosting', 'ridge_regression', 'linear_regression']
+          for m in models:
+              path = f'DataSet/saved_models/{m}.joblib'
+              assert os.path.exists(path), f'Missing model: {m}'
+              joblib.load(path)
+              print(f'OK: {m}')
+          "
