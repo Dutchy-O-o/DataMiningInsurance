@@ -50,7 +50,61 @@ window.addEventListener('DOMContentLoaded', async () => {
 function calcBmi(){const h=parseFloat(document.getElementById('height').value)/100;const w=parseFloat(document.getElementById('weight').value);if(h>0&&w>0)return w/(h*h);return 25;}
 function updateBmi(){const bmi=calcBmi();let tag,cls;if(bmi<18.5){tag='Underweight';cls='underweight';}else if(bmi<25){tag='Normal';cls='normal';}else if(bmi<30){tag='Overweight';cls='overweight';}else{tag='Obese';cls='obese';}document.getElementById('bmiDisplay').innerHTML=`BMI: <strong>${bmi.toFixed(1)}</strong> <span class="bmi-tag ${cls}">${tag}</span>`;}
 
+function validateForm(){
+  const age = parseInt(document.getElementById('age').value);
+  const height = parseFloat(document.getElementById('height').value);
+  const weight = parseFloat(document.getElementById('weight').value);
+  const bmi = calcBmi();
+  const box = document.getElementById('validationMessages');
+  const btn = document.getElementById('predictBtn');
+  const msgs = [];
+  let hasError = false;
+
+  const heightEl = document.getElementById('height');
+  const weightEl = document.getElementById('weight');
+  heightEl.classList.remove('invalid');
+  weightEl.classList.remove('invalid');
+
+  if (isNaN(height) || height < 100 || height > 220) {
+    msgs.push({type:'error', icon:'&#9888;', text:'Height must be between 100-220 cm.'});
+    heightEl.classList.add('invalid');
+    hasError = true;
+  }
+  if (isNaN(weight) || weight < 30 || weight > 200) {
+    msgs.push({type:'error', icon:'&#9888;', text:'Weight must be between 30-200 kg.'});
+    weightEl.classList.add('invalid');
+    hasError = true;
+  }
+
+  if (!hasError) {
+    if (bmi < 16) {
+      msgs.push({type:'warn', icon:'&#9888;', text:`BMI ${bmi.toFixed(1)} is severely underweight — outside the training range (16-53). Prediction accuracy may be limited.`});
+    } else if (bmi > 53) {
+      msgs.push({type:'warn', icon:'&#9888;', text:`BMI ${bmi.toFixed(1)} exceeds the training maximum of 53. Model may under-predict for this profile.`});
+    }
+    if (age < 18) {
+      msgs.push({type:'warn', icon:'&#9888;', text:'The model was trained on ages 18-64. Predictions for minors are extrapolations.'});
+    } else if (age > 64) {
+      msgs.push({type:'warn', icon:'&#9888;', text:'The model was trained on ages 18-64. Predictions for seniors may be less reliable.'});
+    }
+    if (bmi >= 35) {
+      msgs.push({type:'info', icon:'&#9432;', text:'Note: BMI 35+ combined with smoking can produce very high cost estimates.'});
+    }
+  }
+
+  box.innerHTML = msgs.map(m =>
+    `<div class="v-msg ${m.type}"><span class="v-msg-icon">${m.icon}</span><span>${m.text}</span></div>`
+  ).join('');
+
+  btn.disabled = hasError;
+  return !hasError;
+}
+
+// Run once on load so button starts disabled if defaults are bad.
+window.addEventListener('DOMContentLoaded', () => setTimeout(validateForm, 50));
+
 async function runPredict(){
+  if (!validateForm()) return;
   const btn=document.getElementById('predictBtn');
   btn.classList.add('loading');
   btn.innerHTML='<span class="spinner"></span>&nbsp; Analyzing...';
@@ -150,6 +204,25 @@ async function runPredict(){
 }
 
 async function downloadReport(){if(!lastResult||!lastResult.advice)return;const res=await fetch('/download-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cost:lastResult.cost,advice:lastResult.advice,age:lastData.age,bmi:lastData.bmi,smoker:lastData.smoker,region:lastData.region})});const blob=await res.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='insurance_report.md';a.click();URL.revokeObjectURL(url);}
+
+function openPrintReport(){
+  if (!lastResult) { alert('Please run a prediction first.'); return; }
+  const payload = {
+    cost: lastResult.cost,
+    confidence: lastResult.confidence,
+    shap_bars: lastResult.shap_bars,
+    scenarios: lastResult.scenarios,
+    advice: lastResult.advice,
+    similar: lastResult.similar,
+    profile: lastData,
+  };
+  localStorage.setItem('printReport', JSON.stringify(payload));
+  const w = window.open('/report', '_blank');
+  if (w) {
+    // Trigger print automatically after the page loads
+    w.addEventListener('load', () => setTimeout(() => w.print(), 400));
+  }
+}
 
 function handleDrop(e){
   e.preventDefault();
