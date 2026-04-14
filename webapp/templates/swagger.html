@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>API Documentation — Smart Insurance Advisor</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui.min.css">
+<style>
+  body{margin:0;font-family:system-ui,-apple-system,sans-serif;}
+  .topbar{background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;padding:14px 24px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 12px rgba(0,0,0,0.08);}
+  .topbar .brand{display:flex;align-items:center;gap:14px;}
+  .topbar .logo{width:36px;height:36px;border-radius:10px;background:rgba(255,255,255,0.15);display:flex;align-items:center;justify-content:center;font-size:18px;backdrop-filter:blur(10px);}
+  .topbar h1{font-size:17px;font-weight:700;margin:0;letter-spacing:-0.3px;}
+  .topbar .subtitle{font-size:12px;opacity:0.85;margin-top:2px;}
+  .topbar .links a{color:#fff;text-decoration:none;margin-left:18px;font-size:13px;font-weight:500;padding:6px 14px;border-radius:8px;background:rgba(255,255,255,0.12);transition:background 0.2s;}
+  .topbar .links a:hover{background:rgba(255,255,255,0.22);}
+  #swagger-ui{max-width:1400px;margin:0 auto;}
+  .swagger-ui .topbar{display:none;}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <div class="brand">
+    <div class="logo">&#128200;</div>
+    <div>
+      <h1>Smart Insurance Advisor — API Documentation</h1>
+      <div class="subtitle">Interactive REST API reference · OpenAPI 3.0</div>
+    </div>
+  </div>
+  <div class="links">
+    <a href="/">&larr; Back to App</a>
+    <a href="/openapi.json" target="_blank">openapi.json</a>
+  </div>
+</div>
+
+<div id="swagger-ui"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui-bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/swagger-ui/5.17.14/swagger-ui-standalone-preset.min.js"></script>
+<script>
+window.onload = function () {
+  window.ui = SwaggerUIBundle({
+    url: "/openapi.json",
+    dom_id: "#swagger-ui",
+    deepLinking: true,
+    presets: [
+      SwaggerUIBundle.presets.apis,
+      SwaggerUIStandalonePreset.slice(1),  // drop top bar
+    ],
+    plugins: [SwaggerUIBundle.plugins.DownloadUrl],
+    layout: "BaseLayout",
+    tryItOutEnabled: true,
+    displayRequestDuration: true,
+    filter: true,
+    defaultModelsExpandDepth: 1,
+  });
+};
+</script>
+</body>
+</html>

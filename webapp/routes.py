@@ -12,6 +12,7 @@ from webapp.ml_service import (
 from webapp.similarity import similar_with_summary
 from webapp.ai_service import get_ai_advice
 from webapp.dashboard import DATASET_STATS, MODEL_SCORES
+from webapp.openapi import OPENAPI_SPEC
 from src.config import DISPLAY_NAMES
 
 bp = Blueprint("main", __name__)
@@ -125,6 +126,25 @@ def batch_predict():
         "max_prediction":  round(max(r["predicted_cost"] for r in valid), 2) if valid else 0,
     }
     return jsonify({"results": results, "summary": summary})
+
+
+@bp.route("/openapi.json")
+def openapi_json():
+    """Serve the OpenAPI 3.0 spec as JSON for tooling integration."""
+    return jsonify(OPENAPI_SPEC)
+
+
+@bp.route("/docs")
+def api_docs():
+    """Swagger UI documentation page (served from CDN, no dependency)."""
+    return render_template("swagger.html")
+
+
+@bp.route("/report", methods=["GET"])
+def print_report():
+    """Standalone printable report page. Data is pulled from sessionStorage
+    on the client side (set by the main UI before opening this route)."""
+    return render_template("report_print.html")
 
 
 @bp.route("/download-report", methods=["POST"])

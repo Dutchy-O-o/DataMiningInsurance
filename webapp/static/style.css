@@ -130,6 +130,13 @@
   .bmi-tag.normal{background:rgba(16,185,129,0.15);color:#34d399;}
   .bmi-tag.overweight{background:rgba(245,158,11,0.15);color:#fbbf24;}
   .bmi-tag.obese{background:rgba(239,68,68,0.15);color:#f87171;}
+  .v-msg{display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-radius:8px;font-size:12.5px;line-height:1.4;margin-bottom:6px;}
+  .v-msg.warn{background:rgba(245,158,11,0.08);border:1px solid rgba(245,158,11,0.25);color:#fbbf24;}
+  .v-msg.error{background:rgba(239,68,68,0.08);border:1px solid rgba(239,68,68,0.3);color:#f87171;}
+  .v-msg.info{background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.2);color:#60a5fa;}
+  .v-msg-icon{font-weight:700;flex-shrink:0;}
+  .form-group input.invalid,.form-group select.invalid{border-color:#ef4444!important;box-shadow:0 0 0 3px rgba(239,68,68,0.08);}
+  .btn-primary:disabled{opacity:0.5;cursor:not-allowed;transform:none!important;}
 
   /* Welcome Dashboard */
   .welcome-dash{animation:fadeUp 0.6s ease;}

@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Insurance Analysis Report</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box;}
+  body{font-family:'Inter','Segoe UI',system-ui,-apple-system,sans-serif;color:#0f172a;background:#fff;padding:40px 48px;line-height:1.55;max-width:820px;margin:0 auto;}
+
+  .no-print{margin-bottom:32px;display:flex;justify-content:space-between;align-items:center;gap:16px;padding:16px 20px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:12px;}
+  .no-print h3{font-size:15px;color:#475569;font-weight:600;}
+  .btn{background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;border:none;padding:10px 22px;border-radius:8px;font-weight:600;font-size:13px;cursor:pointer;box-shadow:0 4px 12px rgba(59,130,246,0.25);}
+  .btn-secondary{background:#fff;color:#475569;border:1px solid #cbd5e1;box-shadow:none;}
+
+  .header{border-bottom:3px solid #3b82f6;padding-bottom:20px;margin-bottom:28px;}
+  .header .eyebrow{font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1.5px;font-weight:600;margin-bottom:6px;}
+  .header h1{font-size:26px;font-weight:800;color:#0f172a;letter-spacing:-0.5px;margin-bottom:4px;}
+  .header .date{font-size:12px;color:#64748b;margin-top:8px;}
+
+  .section{margin:28px 0;page-break-inside:avoid;}
+  .section h2{font-size:16px;font-weight:700;color:#0f172a;margin-bottom:14px;padding-bottom:8px;border-bottom:2px solid #e2e8f0;text-transform:uppercase;letter-spacing:0.5px;}
+
+  .hero{background:linear-gradient(135deg,#3b82f6,#8b5cf6);color:#fff;border-radius:14px;padding:26px 28px;margin-bottom:12px;}
+  .hero .label{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;opacity:0.85;margin-bottom:6px;}
+  .hero .amount{font-size:42px;font-weight:800;letter-spacing:-1px;}
+  .hero .range{font-size:12px;opacity:0.9;margin-top:8px;}
+
+  table{width:100%;border-collapse:collapse;font-size:13px;}
+  table.profile td{padding:8px 14px;border-bottom:1px solid #e2e8f0;}
+  table.profile td:first-child{font-weight:600;color:#64748b;text-transform:uppercase;font-size:11px;letter-spacing:0.5px;width:40%;}
+  table.profile td:last-child{color:#0f172a;font-weight:600;}
+
+  .shap-row{display:grid;grid-template-columns:140px 1fr 90px;gap:12px;align-items:center;padding:7px 0;font-size:12px;}
+  .shap-row .name{color:#475569;font-weight:500;}
+  .shap-row .bar{height:18px;background:#f1f5f9;border-radius:4px;overflow:hidden;position:relative;}
+  .shap-row .bar-fill{height:100%;border-radius:4px;}
+  .shap-row .val{font-weight:700;text-align:right;}
+  .shap-row.pos .bar-fill{background:linear-gradient(90deg,#a78bfa,#8b5cf6);}
+  .shap-row.neg .bar-fill{background:linear-gradient(90deg,#22d3ee,#06b6d4);}
+  .shap-row.pos .val{color:#8b5cf6;}
+  .shap-row.neg .val{color:#06b6d4;}
+
+  .scenario{background:#f8fafc;border:1px solid #e2e8f0;border-left:4px solid #10b981;border-radius:8px;padding:14px 18px;margin-bottom:10px;}
+  .scenario .scen-title{font-weight:700;color:#0f172a;font-size:13px;margin-bottom:4px;}
+  .scenario .scen-sub{font-size:12px;color:#64748b;}
+  .scenario .savings{font-size:15px;color:#10b981;font-weight:800;margin-top:4px;}
+
+  .ai-report{background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:20px 24px;font-size:13px;color:#334155;line-height:1.65;}
+  .ai-report h1,.ai-report h2,.ai-report h3{color:#0f172a;font-weight:700;margin:14px 0 8px;}
+  .ai-report h3{font-size:14px;}
+  .ai-report h2{font-size:15px;}
+  .ai-report h1{font-size:16px;}
+  .ai-report strong{color:#0f172a;}
+  .ai-report ul{margin:8px 0 8px 24px;}
+  .ai-report li{margin-bottom:4px;}
+
+  .similar-row{display:grid;grid-template-columns:30px 1fr 100px;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid #e2e8f0;font-size:12px;}
+  .similar-row:last-child{border-bottom:none;}
+  .similar-row .num{width:26px;height:26px;border-radius:50%;background:#8b5cf6;color:#fff;font-weight:700;font-size:11px;display:flex;align-items:center;justify-content:center;}
+  .similar-row .desc{color:#475569;}
+  .similar-row .cost{text-align:right;font-weight:700;color:#3b82f6;font-size:14px;}
+
+  .footer{margin-top:40px;padding-top:20px;border-top:1px solid #e2e8f0;font-size:10.5px;color:#94a3b8;text-align:center;line-height:1.6;}
+
+  @media print {
+    body{padding:16mm 18mm;max-width:none;}
+    .no-print{display:none;}
+    .section{page-break-inside:avoid;}
+    .hero{background:#3b82f6!important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    .shap-row .bar,.shap-row .bar-fill{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    @page{size:A4;margin:0;}
+  }
+</style>
+</head>
+<body>
+
+<div class="no-print">
+  <h3>Ready to save as PDF? Click Print → Save as PDF</h3>
+  <div>
+    <button class="btn" onclick="window.print()">&#128438; Print / Save as PDF</button>
+    <button class="btn btn-secondary" onclick="window.close()">Close</button>
+  </div>
+</div>
+
+<div class="header">
+  <div class="eyebrow">Smart Insurance Advisor</div>
+  <h1>Personal Insurance Cost Analysis</h1>
+  <div class="date" id="date"></div>
+</div>
+
+<div class="section">
+  <div class="hero">
+    <div class="label">Estimated Annual Cost</div>
+    <div class="amount" id="cost">—</div>
+    <div class="range" id="range"></div>
+  </div>
+</div>
+
+<div class="section">
+  <h2>Your Profile</h2>
+  <table class="profile">
+    <tr><td>Age</td><td id="p-age">—</td></tr>
+    <tr><td>Sex</td><td id="p-sex">—</td></tr>
+    <tr><td>BMI</td><td id="p-bmi">—</td></tr>
+    <tr><td>Children</td><td id="p-children">—</td></tr>
+    <tr><td>Smoker</td><td id="p-smoker">—</td></tr>
+    <tr><td>Region</td><td id="p-region">—</td></tr>
+  </table>
+</div>
+
+<div class="section" id="shap-section">
+  <h2>Cost Breakdown (SHAP Analysis)</h2>
+  <div id="shap-list"></div>
+</div>
+
+<div class="section" id="scenarios-section" style="display:none;">
+  <h2>Savings Scenarios</h2>
+  <div id="scenarios-list"></div>
+</div>
+
+<div class="section" id="ai-section" style="display:none;">
+  <h2>AI Advisor Report</h2>
+  <div class="ai-report" id="ai-body"></div>
+</div>
+
+<div class="section" id="similar-section" style="display:none;">
+  <h2>Similar Patients (Training Data)</h2>
+  <div id="similar-list"></div>
+</div>
+
+<div class="footer">
+  <div>Generated by <strong>Smart Insurance Advisor V2.0</strong></div>
+  <div>Powered by XGBoost (R² = 0.88) · SHAP TreeExplainer · Claude Haiku AI · KNN Similarity</div>
+  <div style="margin-top:6px;">Report ID: <span id="report-id">—</span></div>
+</div>
+
+<script>
+  const data = JSON.parse(localStorage.getItem('printReport') || '{}');
+  if (!data.cost) {
+    document.body.innerHTML = '<div style="padding:60px;text-align:center;color:#64748b;font-family:sans-serif;"><h2>No report data found</h2><p>Please run a prediction first, then click "Download PDF".</p></div>';
+  } else {
+    document.getElementById('date').textContent = new Date().toLocaleString('en-US',{dateStyle:'long',timeStyle:'short'});
+    document.getElementById('cost').textContent = '$' + Math.round(data.cost).toLocaleString();
+    if (data.confidence) {
+      document.getElementById('range').textContent = `Confidence: $${data.confidence.low.toLocaleString()} – $${data.confidence.high.toLocaleString()} (3-model ensemble)`;
+    }
+    document.getElementById('report-id').textContent = 'RPT-' + Date.now().toString(36).toUpperCase();
+
+    // Profile
+    document.getElementById('p-age').textContent = data.profile.age;
+    document.getElementById('p-sex').textContent = data.profile.sex.charAt(0).toUpperCase() + data.profile.sex.slice(1);
+    document.getElementById('p-bmi').textContent = parseFloat(data.profile.bmi).toFixed(1);
+    document.getElementById('p-children').textContent = data.profile.children;
+    document.getElementById('p-smoker').textContent = data.profile.smoker === 'yes' ? 'Yes' : 'No';
+    document.getElementById('p-region').textContent = data.profile.region.charAt(0).toUpperCase() + data.profile.region.slice(1);
+
+    // SHAP
+    if (data.shap_bars && data.shap_bars.length) {
+      const maxAbs = Math.max(...data.shap_bars.map(b => Math.abs(b.value)));
+      document.getElementById('shap-list').innerHTML = data.shap_bars.map(b => {
+        const pct = (Math.abs(b.value) / maxAbs) * 100;
+        const cls = b.value >= 0 ? 'pos' : 'neg';
+        const sign = b.value >= 0 ? '+' : '−';
+        return `<div class="shap-row ${cls}"><div class="name">${b.name}</div><div class="bar"><div class="bar-fill" style="width:${pct}%;"></div></div><div class="val">${sign}$${Math.abs(b.value).toLocaleString(undefined,{maximumFractionDigits:0})}</div></div>`;
+      }).join('');
+    }
+
+    // Scenarios
+    if (data.scenarios && Object.keys(data.scenarios).length) {
+      document.getElementById('scenarios-section').style.display = 'block';
+      let html = '';
+      if (data.scenarios.quit_smoking) {
+        const s = data.scenarios.quit_smoking;
+        html += `<div class="scenario"><div class="scen-title">If you quit smoking</div><div class="scen-sub">Cost drops from $${s.current.toLocaleString()} to $${s.new.toLocaleString()}</div><div class="savings">Save $${s.savings.toLocaleString()} / year</div></div>`;
+      }
+      if (data.scenarios.healthy_bmi) {
+        const s = data.scenarios.healthy_bmi;
+        html += `<div class="scenario"><div class="scen-title">If you reach BMI 25</div><div class="scen-sub">Cost drops from $${s.current.toLocaleString()} to $${s.new.toLocaleString()}</div><div class="savings">Save $${s.savings.toLocaleString()} / year</div></div>`;
+      }
+      document.getElementById('scenarios-list').innerHTML = html;
+    }
+
+    // AI report
+    if (data.advice) {
+      document.getElementById('ai-section').style.display = 'block';
+      document.getElementById('ai-body').innerHTML = markdownToHtml(data.advice);
+    }
+
+    // Similar patients
+    if (data.similar && data.similar.patients && data.similar.patients.length) {
+      document.getElementById('similar-section').style.display = 'block';
+      document.getElementById('similar-list').innerHTML = data.similar.patients.map((p, i) => {
+        const smokerStr = p.smoker === 'yes' ? 'Smoker' : 'Non-smoker';
+        return `<div class="similar-row"><div class="num">${i+1}</div><div class="desc">Age ${p.age} · ${p.sex} · BMI ${p.bmi} · ${p.region} · ${smokerStr} (${p.similarity}% match)</div><div class="cost">$${p.actual_charge.toLocaleString()}</div></div>`;
+      }).join('');
+    }
+  }
+
+  function markdownToHtml(md) {
+    return md
+      .replace(/### (.*)/g, '<h3>$1</h3>')
+      .replace(/## (.*)/g, '<h2>$1</h2>')
+      .replace(/# (.*)/g, '<h1>$1</h1>')
+      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+      .replace(/\*(.*?)\*/g, '<em>$1</em>')
+      .replace(/^- (.*)/gm, '<li>$1</li>')
+      .replace(/(<li>.*<\/li>\n?)+/g, m => '<ul>' + m + '</ul>')
+      .replace(/\n\n/g, '</p><p>')
+      .replace(/\n/g, '<br>');
+  }
+</script>
+</body>
+</html>

@@ -21,7 +21,7 @@
     <div class="card" style="position:sticky;top:24px;">
       <div class="card-title"><div class="icon" style="background:rgba(59,130,246,0.1);color:var(--accent);">&#9881;</div> Your Profile</div>
 
-      <div class="form-group"><div class="range-wrap"><div class="range-header"><label>Age</label><span class="range-value" id="ageVal">30</span></div><input type="range" id="age" min="18" max="64" value="30" oninput="document.getElementById('ageVal').textContent=this.value"></div></div>
+      <div class="form-group"><div class="range-wrap"><div class="range-header"><label>Age</label><span class="range-value" id="ageVal">30</span></div><input type="range" id="age" min="18" max="64" value="30" oninput="document.getElementById('ageVal').textContent=this.value;validateForm()"></div></div>
 
       <div class="form-row">
         <div class="form-group"><label>Sex</label><select id="sex"><option value="male">Male</option><option value="female">Female</option></select></div>
@@ -29,8 +29,8 @@
       </div>
 
       <div class="form-row">
-        <div class="form-group"><label>Height (cm)</label><input type="number" id="height" min="100" max="220" value="170" step="1" oninput="updateBmi()"></div>
-        <div class="form-group"><label>Weight (kg)</label><input type="number" id="weight" min="30" max="200" value="72" step="1" oninput="updateBmi()"></div>
+        <div class="form-group"><label>Height (cm)</label><input type="number" id="height" min="100" max="220" value="170" step="1" oninput="updateBmi();validateForm()"></div>
+        <div class="form-group"><label>Weight (kg)</label><input type="number" id="weight" min="30" max="200" value="72" step="1" oninput="updateBmi();validateForm()"></div>
       </div>
       <div class="bmi-display" id="bmiDisplay">BMI: <strong>24.9</strong> <span class="bmi-tag normal">Normal</span></div>
 
@@ -38,6 +38,8 @@
         <div class="form-group"><label>Smoker</label><select id="smoker"><option value="no">No</option><option value="yes">Yes</option></select></div>
         <div class="form-group"><label>Region</label><select id="region"><option value="northeast">Northeast</option><option value="northwest">Northwest</option><option value="southeast">Southeast</option><option value="southwest">Southwest</option></select></div>
       </div>
+
+      <div id="validationMessages" style="margin-top:12px;"></div>
 
       <button class="btn btn-primary" id="predictBtn" onclick="runPredict()">Calculate My Cost</button>
     </div>
@@ -85,7 +87,10 @@
         <div class="ai-report" id="aiReport" style="display:none;">
           <div class="report-header"><div class="ai-icon">&#9733;</div><div><h3>AI Advisor Report</h3><p>Powered by Claude AI + SHAP Insights</p></div></div>
           <div class="report-body" id="reportBody"></div>
-          <button class="btn-download" onclick="downloadReport()">&#11015; Download Report</button>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button class="btn-download" onclick="downloadReport()">&#11015; Markdown</button>
+            <button class="btn-download" style="background:linear-gradient(135deg,#ef4444,#f59e0b);color:white;border:none;font-weight:600;" onclick="openPrintReport()">&#128438; Download as PDF</button>
+          </div>
         </div>
 
         <div class="similar-section" id="similarSection" style="display:none;margin-top:32px;">
