@@ -1,36 +1,35 @@
-# Dockerfile for Smart Insurance Advisor V2.0
-# Uses Python 3.11 slim for smaller image size
-
+# Smart Insurance Advisor V2.0 — production container
+# Multi-stage not needed: runtime deps are small enough.
 FROM python:3.11-slim
 
-# Install system dependencies needed by LightGBM, XGBoost, and SHAP
+# System libs required by XGBoost and LightGBM wheels
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libgomp1 \
+        libgomp1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Set working directory
 WORKDIR /app
 
-# Copy requirements first for better Docker layer caching
-COPY requirements.txt .
-
-# Install Python dependencies
+# Install Python deps first for better layer caching
+COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy application code
-COPY . .
+# Copy only the application payload (venv/docs are excluded via .dockerignore)
+COPY src/    ./src/
+COPY webapp/ ./webapp/
+COPY data/   ./data/
+COPY models/ ./models/
+COPY run.py  ./
 
-# Expose Flask default port
+# Runtime config
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PORT=5000 \
+    DOCKER=1
+
 EXPOSE 5000
 
-# Environment variables
-ENV FLASK_APP=DataSet/app.py
-ENV PYTHONUNBUFFERED=1
-
-# Health check
+# Simple health probe hitting the stats endpoint
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:5000/api/stats')" || exit 1
+    CMD python -c "import urllib.request, sys; sys.exit(0 if urllib.request.urlopen('http://localhost:5000/api/stats').status == 200 else 1)"
 
-# Run the Flask app
-WORKDIR /app/DataSet
-CMD ["python", "app.py"]
+CMD ["python", "run.py"]

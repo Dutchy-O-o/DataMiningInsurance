@@ -1,0 +1,125 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Smart Insurance Advisor V2.0</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">&#9790;</button>
+<div class="app">
+  <div class="header">
+    <div class="badge"><span class="dot"></span> XGBoost ML + SHAP XAI + Claude AI</div>
+    <h1>Smart Insurance Advisor</h1>
+    <p>AI-powered cost prediction with explainable analysis and personalized health optimization</p>
+  </div>
+
+  <div class="layout">
+    <!-- LEFT: Form -->
+    <div class="card" style="position:sticky;top:24px;">
+      <div class="card-title"><div class="icon" style="background:rgba(59,130,246,0.1);color:var(--accent);">&#9881;</div> Your Profile</div>
+
+      <div class="form-group"><div class="range-wrap"><div class="range-header"><label>Age</label><span class="range-value" id="ageVal">30</span></div><input type="range" id="age" min="18" max="64" value="30" oninput="document.getElementById('ageVal').textContent=this.value"></div></div>
+
+      <div class="form-row">
+        <div class="form-group"><label>Sex</label><select id="sex"><option value="male">Male</option><option value="female">Female</option></select></div>
+        <div class="form-group"><label>Children</label><select id="children"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option><option value="4">4</option><option value="5">5</option></select></div>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group"><label>Height (cm)</label><input type="number" id="height" min="100" max="220" value="170" step="1" oninput="updateBmi()"></div>
+        <div class="form-group"><label>Weight (kg)</label><input type="number" id="weight" min="30" max="200" value="72" step="1" oninput="updateBmi()"></div>
+      </div>
+      <div class="bmi-display" id="bmiDisplay">BMI: <strong>24.9</strong> <span class="bmi-tag normal">Normal</span></div>
+
+      <div class="form-row">
+        <div class="form-group"><label>Smoker</label><select id="smoker"><option value="no">No</option><option value="yes">Yes</option></select></div>
+        <div class="form-group"><label>Region</label><select id="region"><option value="northeast">Northeast</option><option value="northwest">Northwest</option><option value="southeast">Southeast</option><option value="southwest">Southwest</option></select></div>
+      </div>
+
+      <button class="btn btn-primary" id="predictBtn" onclick="runPredict()">Calculate My Cost</button>
+    </div>
+
+    <!-- RIGHT -->
+    <div>
+      <!-- Welcome Dashboard -->
+      <div id="welcome" class="welcome-dash">
+        <div class="welcome-title">Dataset Overview</div>
+        <div class="welcome-sub">Trained on real insurance data - explore the insights below</div>
+        <div class="stat-grid" id="statGrid"></div>
+
+        <div class="model-section">
+          <h3>&#127942; Model Performance Comparison</h3>
+          <div id="modelBars"></div>
+        </div>
+
+        <div class="insight-box">
+          <strong>Key Finding:</strong> Smoking is the #1 cost driver (82.6% feature importance). Smokers pay on average <strong>3.8x more</strong> than non-smokers. The XGBoost model with interaction features captures this non-linear relationship accurately.
+        </div>
+        <div class="welcome-arrow">&#8592; Fill in your profile and click Calculate to get your personalized analysis</div>
+      </div>
+
+      <!-- Results -->
+      <div id="results" class="results">
+        <div class="cost-hero">
+          <div class="label">Estimated Annual Cost</div>
+          <div class="amount" id="costAmount">$0</div>
+          <div class="sub">Predicted by XGBoost V2.0 (Interaction Features + SHAP)</div>
+          <div class="confidence" id="confidence" style="display:none;">
+            <span>Low: <span class="c-val" id="confLow">-</span></span>
+            <span>Avg: <span class="c-val" id="confMid">-</span></span>
+            <span>High: <span class="c-val" id="confHigh">-</span></span>
+          </div>
+        </div>
+
+        <div class="scenarios" id="scenarios"></div>
+
+        <div class="shap-section" id="shapSection" style="display:none;">
+          <div class="shap-header"><div class="shap-icon">&#9881;</div><div><h3>Cost Breakdown - SHAP Analysis</h3><p>Explainable AI: see exactly what drives your cost up or down</p></div></div>
+          <div id="shapBars"></div>
+          <div class="shap-legend"><span><span class="dot-up"></span> Increases cost</span><span><span class="dot-down"></span> Decreases cost</span></div>
+        </div>
+
+        <div class="ai-report" id="aiReport" style="display:none;">
+          <div class="report-header"><div class="ai-icon">&#9733;</div><div><h3>AI Advisor Report</h3><p>Powered by Claude AI + SHAP Insights</p></div></div>
+          <div class="report-body" id="reportBody"></div>
+          <button class="btn-download" onclick="downloadReport()">&#11015; Download Report</button>
+        </div>
+
+        <div class="similar-section" id="similarSection" style="display:none;margin-top:32px;">
+          <div class="section-header">
+            <h3>Patients Like You</h3>
+            <p>5 most similar profiles from the training set &middot; K-Nearest Neighbors</p>
+          </div>
+          <div id="similarSummary" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:0 0 20px;"></div>
+          <div id="similarList"></div>
+        </div>
+
+        <div class="batch-section" style="margin-top:40px;padding-top:32px;border-top:1px solid var(--border);">
+          <div class="section-header">
+            <h3>Batch CSV Prediction</h3>
+            <p>Upload a CSV to predict costs for multiple policyholders at once</p>
+          </div>
+          <div id="dropZone" ondragover="event.preventDefault();this.classList.add('drag-active');" ondragleave="this.classList.remove('drag-active');" ondrop="handleDrop(event)"
+               style="background:linear-gradient(135deg,rgba(6,182,212,0.04),rgba(59,130,246,0.04));border:2px dashed rgba(6,182,212,0.35);border-radius:16px;padding:36px 24px;text-align:center;margin-top:20px;transition:all 0.3s;cursor:pointer;" onclick="document.getElementById('csvFile').click()">
+            <div style="font-size:42px;margin-bottom:10px;opacity:0.8;">&#128228;</div>
+            <div style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:6px;">Click to upload or drag &amp; drop</div>
+            <div style="font-size:13px;color:var(--text3);margin-bottom:16px;">CSV with: age, sex, bmi, children, smoker, region</div>
+            <input type="file" id="csvFile" accept=".csv" style="display:none;" onchange="uploadBatch()">
+            <button type="button" class="btn-download" style="background:linear-gradient(135deg,#06b6d4,#22d3ee);box-shadow:0 8px 20px rgba(6,182,212,0.25);color:white;border:none;font-weight:600;" onclick="event.stopPropagation();document.getElementById('csvFile').click();">Select File</button>
+            <div id="batchStatus" style="margin-top:14px;font-size:13px;color:var(--text2);min-height:18px;"></div>
+          </div>
+          <div id="batchResults" style="margin-top:20px;"></div>
+        </div>
+
+        <div class="profile-bar" id="profileBar"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

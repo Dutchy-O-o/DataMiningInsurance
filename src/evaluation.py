@@ -21,11 +21,10 @@ sns.set_theme(style="whitegrid")
 # PATHS
 # ============================================================
 
-BASE_DIR = pathlib.Path(__file__).parent
-PROCESSED_DIR = BASE_DIR / "processed"
-MODEL_DIR = BASE_DIR / "saved_models"
-RESULTS_DIR = BASE_DIR / "results"
-RESULTS_DIR.mkdir(exist_ok=True)
+import sys
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+from src.config import PROCESSED_DIR, MODELS_DIR as MODEL_DIR, RESULTS_DIR  # noqa: E402
+RESULTS_DIR.mkdir(parents=True, exist_ok=True)
 
 # ============================================================
 # 1. LOAD DATA AND MODEL

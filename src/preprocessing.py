@@ -25,8 +25,9 @@ warnings.filterwarnings("ignore")
 # 1. DATA LOADING
 # ============================================================
 
-DATA_DIR = pathlib.Path(__file__).parent
-RAW_CSV = DATA_DIR / "insurance.csv"
+import sys
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+from src.config import DATA_DIR, PROCESSED_DIR, INSURANCE_CSV as RAW_CSV  # noqa: E402
 
 
 def load_data(path=RAW_CSV):
@@ -166,8 +167,8 @@ def preprocess_pipeline(save=True):
 
     # 6) Save
     if save:
-        output_dir = DATA_DIR / "processed"
-        output_dir.mkdir(exist_ok=True)
+        output_dir = PROCESSED_DIR
+        output_dir.mkdir(parents=True, exist_ok=True)
 
         X_train.to_csv(output_dir / "X_train.csv", index=False)
         X_test.to_csv(output_dir / "X_test.csv", index=False)
