@@ -1,14 +1,31 @@
-pandas>=2.0.0
-numpy>=1.24.0
-matplotlib>=3.7.0
-seaborn>=0.12.0
-jupyter>=1.0.0
-scikit-learn>=1.3.0
-xgboost>=2.0.0
-lightgbm>=4.0.0
-joblib>=1.3.0
-streamlit>=1.30.0
-anthropic>=0.40.0
-flask>=3.0.0
-python-dotenv>=1.0.0
-shap>=0.44.0
+# Smart Insurance Advisor V2.0 - Production Requirements
+
+# Web framework
+Flask>=3.0,<4.0
+
+# Data processing
+pandas>=2.0,<4.0
+numpy>=1.24,<3.0
+
+# Machine learning
+scikit-learn>=1.3,<2.0
+xgboost>=2.0,<4.0
+lightgbm>=4.0,<5.0
+joblib>=1.3,<2.0
+
+# Explainability
+shap>=0.43,<1.0
+
+# Visualization (for plot generation)
+matplotlib>=3.7,<4.0
+seaborn>=0.12,<1.0
+
+# Generative AI
+anthropic>=0.20,<1.0
+
+# Environment
+python-dotenv>=1.0,<2.0
+
+# Testing (dev only — optional at runtime)
+pytest>=7.0,<9.0
+pytest-cov>=4.0,<7.0

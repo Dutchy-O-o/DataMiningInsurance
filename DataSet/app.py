@@ -19,6 +19,8 @@ import shap
 import anthropic
 from dotenv import load_dotenv
 from flask import Flask, request, jsonify, render_template_string, Response
+from sklearn.neighbors import NearestNeighbors
+import io
 
 # ============================================================
 # APP SETUP
@@ -103,6 +105,143 @@ try:
     MODEL_SCORES.sort(key=lambda x: x["r2"], reverse=True)
 except Exception:
     pass
+
+
+# ---- KNN for Similar Patients (smoker-stratified + weighted) ----
+# Strategy:
+#   1. Split training data by smoker status (yes / no).
+#   2. Fit a separate KNN model for each group.
+#   3. At query time, ALWAYS search within the user's own smoker group.
+#      This enforces an exact-match on the most important feature.
+#   4. Within the group, use weighted features: BMI and age get heavier
+#      weights because they are the next strongest cost drivers.
+#   5. Similarity % is derived from the normalized distance across features.
+KNN_SMOKER = None        # KNN fitted on smoker rows only
+KNN_NONSMOKER = None     # KNN fitted on non-smoker rows only
+TRAIN_RAW_SMOKER = None
+TRAIN_RAW_NONSMOKER = None
+TRAIN_Y_SMOKER = None
+TRAIN_Y_NONSMOKER = None
+
+# Feature weights for Euclidean distance. Ordered to match KNN_FEATURES below.
+# Weights were chosen to reflect the feature importance from XGBoost:
+#   - smoker is already filtered (not used in distance)
+#   - bmi, age: strong drivers  -> higher weight
+#   - children, sex, region:  secondary -> standard weight
+KNN_FEATURES = ["age", "bmi", "children", "sex",
+                "region_northwest", "region_southeast", "region_southwest"]
+KNN_WEIGHTS = np.array([2.0,    # age
+                        2.5,    # bmi
+                        0.8,    # children
+                        0.5,    # sex
+                        0.4, 0.4, 0.4])  # region dummies
+
+def _weighted_transform(X_df):
+    """Apply sqrt(weight) scaling so Euclidean distance becomes weighted."""
+    return X_df[KNN_FEATURES].values * np.sqrt(KNN_WEIGHTS)
+
+def _reconstruct_raw(X_proc_row):
+    """Decode a preprocessed feature row back to human-readable values."""
+    age = round(X_proc_row["age"] * SCALER["age"]["std"] + SCALER["age"]["mean"])
+    bmi = round(X_proc_row["bmi"] * SCALER["bmi"]["std"] + SCALER["bmi"]["mean"], 1)
+    children = round(X_proc_row["children"] * SCALER["children"]["std"] + SCALER["children"]["mean"])
+    sex = "male" if X_proc_row["sex"] == 1 else "female"
+    smoker = "yes" if X_proc_row["smoker"] == 1 else "no"
+    if X_proc_row.get("region_northwest", 0) == 1:
+        region = "northwest"
+    elif X_proc_row.get("region_southeast", 0) == 1:
+        region = "southeast"
+    elif X_proc_row.get("region_southwest", 0) == 1:
+        region = "southwest"
+    else:
+        region = "northeast"
+    return {"age": int(age), "sex": sex, "bmi": float(bmi),
+            "children": int(children), "smoker": smoker, "region": region}
+
+
+try:
+    X_train_knn = pd.read_csv(PROCESSED_DIR / "X_train.csv")
+    y_train_knn = pd.read_csv(PROCESSED_DIR / "y_train.csv").squeeze()
+
+    # smoker column in processed data is already 0/1 encoded.
+    is_smoker = X_train_knn["smoker"] == 1
+    smoker_rows = X_train_knn[is_smoker].reset_index(drop=True)
+    nonsmoker_rows = X_train_knn[~is_smoker].reset_index(drop=True)
+
+    # Fit separate KNN models on weighted feature spaces.
+    KNN_SMOKER = NearestNeighbors(n_neighbors=5, metric="euclidean")
+    KNN_SMOKER.fit(_weighted_transform(smoker_rows))
+
+    KNN_NONSMOKER = NearestNeighbors(n_neighbors=5, metric="euclidean")
+    KNN_NONSMOKER.fit(_weighted_transform(nonsmoker_rows))
+
+    # Reconstruct raw views from the processed data itself — no alignment needed.
+    TRAIN_RAW_SMOKER = pd.DataFrame([_reconstruct_raw(r) for _, r in smoker_rows.iterrows()])
+    TRAIN_RAW_NONSMOKER = pd.DataFrame([_reconstruct_raw(r) for _, r in nonsmoker_rows.iterrows()])
+
+    TRAIN_Y_SMOKER = y_train_knn.values[is_smoker.values]
+    TRAIN_Y_NONSMOKER = y_train_knn.values[~is_smoker.values]
+
+    def _estimate_scale(knn_model, X):
+        if len(X) < 2:
+            return 10.0
+        sample = X[: min(200, len(X))]
+        d, _ = knn_model.kneighbors(sample, n_neighbors=min(5, len(X)))
+        return float(np.percentile(d[:, -1], 95)) or 1.0
+
+    SCALE_SMOKER = _estimate_scale(KNN_SMOKER, _weighted_transform(smoker_rows))
+    SCALE_NONSMOKER = _estimate_scale(KNN_NONSMOKER, _weighted_transform(nonsmoker_rows))
+    print(f"KNN init: {len(smoker_rows)} smokers, {len(nonsmoker_rows)} non-smokers")
+except Exception as e:
+    print(f"KNN init failed: {e}")
+    KNN_SMOKER = None
+    KNN_NONSMOKER = None
+
+
+def find_similar_patients(age, sex, bmi, children, smoker, region):
+    """Return list of 5 most similar training patients, filtered by smoker status."""
+    if smoker == "yes":
+        model = KNN_SMOKER
+        raw = TRAIN_RAW_SMOKER
+        y_vals = TRAIN_Y_SMOKER
+        dist_scale = SCALE_SMOKER
+    else:
+        model = KNN_NONSMOKER
+        raw = TRAIN_RAW_NONSMOKER
+        y_vals = TRAIN_Y_NONSMOKER
+        dist_scale = SCALE_NONSMOKER
+    if model is None or raw is None or len(raw) == 0:
+        return None
+
+    # Build feature vector (weighted, same order as KNN_FEATURES)
+    vec = np.array([[
+        scale(age, "age"),
+        scale(bmi, "bmi"),
+        scale(children, "children"),
+        1 if sex == "male" else 0,
+        1 if region == "northwest" else 0,
+        1 if region == "southeast" else 0,
+        1 if region == "southwest" else 0,
+    ]]) * np.sqrt(KNN_WEIGHTS)
+
+    distances, indices = model.kneighbors(vec)
+    out = []
+    for dist, idx in zip(distances[0], indices[0]):
+        row = raw.iloc[int(idx)]
+        # Similarity %: distance=0 -> 100%; distance=dist_scale -> ~37%
+        sim_pct = max(5.0, min(100.0, 100.0 * np.exp(-float(dist) / max(dist_scale, 0.1))))
+        out.append({
+            "age": int(row["age"]),
+            "sex": row["sex"],
+            "bmi": round(float(row["bmi"]), 1),
+            "children": int(row["children"]),
+            "smoker": row["smoker"],
+            "region": row["region"],
+            "actual_charge": round(float(y_vals[int(idx)])),
+            "similarity": round(float(sim_pct), 1),
+            "distance": round(float(dist), 3),
+        })
+    return out
 
 
 # ============================================================
@@ -258,11 +397,130 @@ def api_predict():
     shap_bars, shap_top = compute_shap(age, sex, bmi, children, smoker, region)
     advice = get_ai_advice(age, bmi, smoker, cost, scenarios, shap_top)
 
+    # Find similar patients (smoker-stratified, weighted KNN)
+    similar_result = None
+    try:
+        sim_list = find_similar_patients(age, sex, bmi, children, smoker, region)
+        if sim_list:
+            charges = [s["actual_charge"] for s in sim_list]
+            similar_result = {
+                "patients": sim_list,
+                "summary": {
+                    "min": min(charges), "max": max(charges),
+                    "mean": round(float(np.mean(charges))),
+                    "median": round(float(np.median(charges))),
+                }
+            }
+    except Exception as e:
+        print(f"Similar patients error: {e}")
+        similar_result = None
+
     return jsonify({
         "cost": round(cost, 2), "confidence": confidence,
         "scenarios": scenarios, "shap_bars": shap_bars,
         "shap_top": shap_top, "advice": advice,
+        "similar": similar_result,
     })
+
+
+@app.route("/similar", methods=["POST"])
+def api_similar():
+    """Find 5 most similar patients, filtered by smoker status + weighted features."""
+    d = request.json
+    age, sex, bmi = int(d["age"]), d["sex"], float(d["bmi"])
+    children, smoker, region = int(d["children"]), d["smoker"], d["region"]
+
+    similar = find_similar_patients(age, sex, bmi, children, smoker, region)
+    if similar is None:
+        return jsonify({"error": "KNN model not available"}), 503
+
+    charges = [s["actual_charge"] for s in similar]
+    summary = {
+        "count": len(similar),
+        "min": min(charges) if charges else 0,
+        "max": max(charges) if charges else 0,
+        "mean": round(float(np.mean(charges))) if charges else 0,
+        "median": round(float(np.median(charges))) if charges else 0,
+    }
+    return jsonify({"similar": similar, "summary": summary})
+
+
+@app.route("/batch_predict", methods=["POST"])
+def batch_predict():
+    """Accept CSV file upload, return predictions + SHAP top features for each row."""
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"error": "Empty filename"}), 400
+
+    try:
+        df_in = pd.read_csv(file)
+    except Exception as e:
+        return jsonify({"error": f"Could not parse CSV: {e}"}), 400
+
+    required_cols = ["age", "sex", "bmi", "children", "smoker", "region"]
+    missing = [c for c in required_cols if c not in df_in.columns]
+    if missing:
+        return jsonify({"error": f"Missing columns: {missing}"}), 400
+
+    results = []
+    for _, row in df_in.iterrows():
+        try:
+            age = int(row["age"])
+            sex = str(row["sex"]).lower()
+            bmi = float(row["bmi"])
+            children = int(row["children"])
+            smoker = str(row["smoker"]).lower()
+            region = str(row["region"]).lower()
+
+            X = build_features(age, sex, bmi, children, smoker, region)
+            cost = max(float(model.predict(X)[0]), 0)
+
+            # Top SHAP feature
+            sv = explainer(X)
+            values = sv.values[0]
+            top_idx = int(np.argmax(np.abs(values)))
+            top_feature = DISPLAY_NAMES.get(FEATURE_NAMES[top_idx], FEATURE_NAMES[top_idx])
+            top_impact = round(float(values[top_idx]), 2)
+
+            results.append({
+                "age": age, "sex": sex, "bmi": bmi,
+                "children": children, "smoker": smoker, "region": region,
+                "predicted_cost": round(cost, 2),
+                "top_shap_feature": top_feature,
+                "top_shap_impact": top_impact,
+            })
+        except Exception as e:
+            results.append({
+                "age": row.get("age", None),
+                "error": str(e),
+            })
+
+    # Return results as both JSON and downloadable CSV
+    output_format = request.args.get("format", "json")
+    if output_format == "csv":
+        df_out = pd.DataFrame(results)
+        csv_buf = io.StringIO()
+        df_out.to_csv(csv_buf, index=False)
+        return Response(
+            csv_buf.getvalue(),
+            mimetype="text/csv",
+            headers={"Content-Disposition": "attachment; filename=batch_predictions.csv"},
+        )
+
+    # Summary stats for JSON response
+    valid = [r for r in results if "predicted_cost" in r]
+    summary = {
+        "total": len(results),
+        "successful": len(valid),
+        "failed": len(results) - len(valid),
+        "mean_prediction": round(float(np.mean([r["predicted_cost"] for r in valid])), 2) if valid else 0,
+        "min_prediction": round(min([r["predicted_cost"] for r in valid]), 2) if valid else 0,
+        "max_prediction": round(max([r["predicted_cost"] for r in valid]), 2) if valid else 0,
+    }
+    return jsonify({"results": results, "summary": summary})
 
 
 @app.route("/download-report", methods=["POST"])
@@ -316,6 +574,15 @@ HTML_TEMPLATE = r"""
     --accent:#3b82f6;--accent2:#8b5cf6;--green:#10b981;--red:#ef4444;--orange:#f59e0b;
     --cyan:#06b6d4;--text:#f1f5f9;--text2:#94a3b8;--text3:#64748b;--glass:rgba(17,24,39,0.7);
   }
+  [data-theme="light"] {
+    --bg:#f8fafc;--surface:#ffffff;--surface2:#f1f5f9;--border:rgba(15,23,42,0.08);
+    --text:#0f172a;--text2:#475569;--text3:#64748b;--glass:rgba(255,255,255,0.85);
+  }
+  [data-theme="light"] body::before{opacity:0.4;}
+  [data-theme="light"] .form-group input,[data-theme="light"] .form-group select{background:#ffffff;border:1px solid rgba(15,23,42,0.12);}
+  [data-theme="light"] .card{box-shadow:0 1px 3px rgba(15,23,42,0.06);}
+  .theme-toggle{position:fixed;top:24px;right:24px;z-index:100;width:44px;height:44px;border-radius:50%;background:var(--glass);backdrop-filter:blur(12px);border:1px solid var(--border);color:var(--text);font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:all 0.2s;}
+  .theme-toggle:hover{transform:scale(1.08);border-color:var(--accent);}
   *{margin:0;padding:0;box-sizing:border-box;}
   body{font-family:'Inter',-apple-system,sans-serif;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden;}
   body::before{content:'';position:fixed;top:-50%;left:-50%;width:200%;height:200%;background:radial-gradient(ellipse at 20% 50%,rgba(59,130,246,0.08) 0%,transparent 50%),radial-gradient(ellipse at 80% 20%,rgba(139,92,246,0.06) 0%,transparent 50%),radial-gradient(ellipse at 50% 80%,rgba(16,185,129,0.04) 0%,transparent 50%);animation:bgMove 20s ease-in-out infinite;z-index:0;}
@@ -357,6 +624,8 @@ HTML_TEMPLATE = r"""
   .btn-primary:active{transform:translateY(0);}
   .btn-primary.loading{pointer-events:none;opacity:0.8;}
   .btn-download{background:var(--surface2);border:1px solid var(--border);color:var(--text2);padding:10px 20px;border-radius:10px;font-size:13px;font-weight:500;cursor:pointer;transition:all 0.2s;display:inline-flex;align-items:center;gap:6px;width:auto;margin-top:16px;}
+  #dropZone:hover{border-color:rgba(6,182,212,0.6)!important;background:linear-gradient(135deg,rgba(6,182,212,0.08),rgba(59,130,246,0.08))!important;transform:translateY(-2px);}
+  #dropZone.drag-active{border-color:#06b6d4!important;background:linear-gradient(135deg,rgba(6,182,212,0.15),rgba(59,130,246,0.12))!important;transform:scale(1.01);}
   .btn-download:hover{border-color:var(--accent);color:var(--text);}
 
   .results{display:none;}
@@ -386,6 +655,9 @@ HTML_TEMPLATE = r"""
   .shap-section .shap-icon{width:40px;height:40px;background:linear-gradient(135deg,#f59e0b,#ef4444);border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;}
   .shap-section .shap-header div h3{font-size:16px;font-weight:600;}
   .shap-section .shap-header div p{font-size:12px;color:var(--text3);}
+  .section-header{text-align:center;margin-bottom:20px;padding-bottom:16px;border-bottom:1px solid var(--border);}
+  .section-header h3{font-size:18px;font-weight:700;color:var(--text);letter-spacing:-0.3px;margin-bottom:4px;}
+  .section-header p{font-size:13px;color:var(--text3);}
 
   .shap-row{display:grid;grid-template-columns:120px 1fr 80px;align-items:center;gap:12px;margin-bottom:10px;}
   .shap-label{font-size:13px;font-weight:500;color:var(--text2);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -463,6 +735,7 @@ HTML_TEMPLATE = r"""
 </style>
 </head>
 <body>
+<button class="theme-toggle" id="themeToggle" onclick="toggleTheme()" title="Toggle theme">&#9790;</button>
 <div class="app">
   <div class="header">
     <div class="badge"><span class="dot"></span> XGBoost ML + SHAP XAI + Claude AI</div>
@@ -542,6 +815,32 @@ HTML_TEMPLATE = r"""
           <button class="btn-download" onclick="downloadReport()">&#11015; Download Report</button>
         </div>
 
+        <div class="similar-section" id="similarSection" style="display:none;margin-top:32px;">
+          <div class="section-header">
+            <h3>Patients Like You</h3>
+            <p>5 most similar profiles from the training set &middot; K-Nearest Neighbors</p>
+          </div>
+          <div id="similarSummary" style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin:0 0 20px;"></div>
+          <div id="similarList"></div>
+        </div>
+
+        <div class="batch-section" style="margin-top:40px;padding-top:32px;border-top:1px solid var(--border);">
+          <div class="section-header">
+            <h3>Batch CSV Prediction</h3>
+            <p>Upload a CSV to predict costs for multiple policyholders at once</p>
+          </div>
+          <div id="dropZone" ondragover="event.preventDefault();this.classList.add('drag-active');" ondragleave="this.classList.remove('drag-active');" ondrop="handleDrop(event)"
+               style="background:linear-gradient(135deg,rgba(6,182,212,0.04),rgba(59,130,246,0.04));border:2px dashed rgba(6,182,212,0.35);border-radius:16px;padding:36px 24px;text-align:center;margin-top:20px;transition:all 0.3s;cursor:pointer;" onclick="document.getElementById('csvFile').click()">
+            <div style="font-size:42px;margin-bottom:10px;opacity:0.8;">&#128228;</div>
+            <div style="font-size:16px;font-weight:600;color:var(--text);margin-bottom:6px;">Click to upload or drag &amp; drop</div>
+            <div style="font-size:13px;color:var(--text3);margin-bottom:16px;">CSV with: age, sex, bmi, children, smoker, region</div>
+            <input type="file" id="csvFile" accept=".csv" style="display:none;" onchange="uploadBatch()">
+            <button type="button" class="btn-download" style="background:linear-gradient(135deg,#06b6d4,#22d3ee);box-shadow:0 8px 20px rgba(6,182,212,0.25);color:white;border:none;font-weight:600;" onclick="event.stopPropagation();document.getElementById('csvFile').click();">Select File</button>
+            <div id="batchStatus" style="margin-top:14px;font-size:13px;color:var(--text2);min-height:18px;"></div>
+          </div>
+          <div id="batchResults" style="margin-top:20px;"></div>
+        </div>
+
         <div class="profile-bar" id="profileBar"></div>
       </div>
     </div>
@@ -549,6 +848,23 @@ HTML_TEMPLATE = r"""
 </div>
 
 <script>
+// Theme toggle (persisted in localStorage)
+function applyTheme(theme){
+  if(theme==='light'){
+    document.documentElement.setAttribute('data-theme','light');
+    document.getElementById('themeToggle').innerHTML='&#9728;';
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+    document.getElementById('themeToggle').innerHTML='&#9790;';
+  }
+}
+function toggleTheme(){
+  const cur=document.documentElement.getAttribute('data-theme')==='light'?'dark':'light';
+  localStorage.setItem('theme',cur);
+  applyTheme(cur);
+}
+(function(){ const saved=localStorage.getItem('theme')||'dark'; applyTheme(saved); })();
+
 let lastResult=null, lastData=null;
 
 // Load welcome dashboard on page load
@@ -629,6 +945,53 @@ async function runPredict(){
     const aiDiv=document.getElementById('aiReport');
     if(lastResult.advice){document.getElementById('reportBody').innerHTML=markdownToHtml(lastResult.advice);aiDiv.style.display='block';}else{aiDiv.style.display='none';}
 
+    // Similar Patients
+    const simDiv=document.getElementById('similarSection');
+    if(lastResult.similar && lastResult.similar.patients && lastResult.similar.patients.length){
+      const sim=lastResult.similar;
+      const mkStat=(label,val,color)=>`<div style="background:linear-gradient(135deg,${color}15,${color}08);border:1px solid ${color}30;border-radius:14px;padding:16px 14px;text-align:center;"><div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:6px;">${label}</div><div style="font-size:22px;font-weight:800;color:${color};letter-spacing:-0.5px;">$${val.toLocaleString()}</div></div>`;
+      document.getElementById('similarSummary').innerHTML =
+        mkStat('Lowest',sim.summary.min,'#10b981')+
+        mkStat('Median',sim.summary.median,'#3b82f6')+
+        mkStat('Average',sim.summary.mean,'#8b5cf6')+
+        mkStat('Highest',sim.summary.max,'#f59e0b');
+
+      let html = '<div style="display:flex;flex-direction:column;gap:8px;">';
+      sim.patients.forEach((p,i) => {
+        const isSmoker = p.smoker==='yes';
+        const smokerBadge = isSmoker
+          ? '<span style="background:rgba(239,68,68,0.12);color:#f87171;padding:3px 10px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:0.5px;">SMOKER</span>'
+          : '<span style="background:rgba(16,185,129,0.12);color:#34d399;padding:3px 10px;border-radius:999px;font-size:10px;font-weight:700;letter-spacing:0.5px;">NON-SMOKER</span>';
+        const simBarWidth = Math.min(100, p.similarity);
+        const simBarColor = p.similarity > 90 ? '#10b981' : p.similarity > 70 ? '#3b82f6' : '#f59e0b';
+        const regionCap = p.region.charAt(0).toUpperCase() + p.region.slice(1);
+        const sexLetter = p.sex === 'male' ? 'M' : 'F';
+        const sexColor = p.sex === 'male' ? '#60a5fa' : '#f472b6';
+
+        html += `<div style="background:var(--surface2);border-radius:14px;padding:16px 18px;display:grid;grid-template-columns:40px 1fr auto;gap:16px;align-items:center;transition:all 0.2s;" onmouseover="this.style.background='rgba(139,92,246,0.06)';this.style.transform='translateY(-1px)';" onmouseout="this.style.background='';this.style.transform='';">
+          <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#8b5cf6,#a78bfa);display:flex;align-items:center;justify-content:center;font-weight:800;color:white;font-size:14px;box-shadow:0 4px 12px rgba(139,92,246,0.3);">${i+1}</div>
+          <div>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+              <span style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:6px;background:${sexColor}22;color:${sexColor};font-size:11px;font-weight:800;">${sexLetter}</span>
+              <span style="font-size:15px;color:var(--text);font-weight:600;">Age ${p.age}, BMI ${p.bmi}, ${regionCap}</span>
+              ${smokerBadge}
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <div style="flex:1;max-width:180px;height:6px;background:rgba(255,255,255,0.04);border-radius:3px;overflow:hidden;"><div style="width:${simBarWidth}%;height:100%;background:${simBarColor};border-radius:3px;transition:width 0.6s cubic-bezier(0.4,0,0.2,1);"></div></div>
+              <span style="font-size:11px;color:var(--text3);font-weight:600;">${p.similarity}% match</span>
+            </div>
+          </div>
+          <div style="text-align:right;">
+            <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:2px;">Actual Cost</div>
+            <div style="font-size:22px;font-weight:800;color:${isSmoker?'#f87171':'#60a5fa'};letter-spacing:-0.5px;">$${p.actual_charge.toLocaleString()}</div>
+          </div>
+        </div>`;
+      });
+      html += '</div>';
+      document.getElementById('similarList').innerHTML = html;
+      simDiv.style.display='block';
+    } else { simDiv.style.display='none'; }
+
     // Profile
     const sx=lastData.sex==='male'?'Male':'Female',sm=lastData.smoker==='yes'?'Yes':'No',rg=lastData.region.charAt(0).toUpperCase()+lastData.region.slice(1),h=document.getElementById('height').value,w=document.getElementById('weight').value;
     document.getElementById('profileBar').innerHTML=`<span>&#128100; Age <span class="pval">${lastData.age}</span></span><span>&#9878; Sex <span class="pval">${sx}</span></span><span>&#9878; ${h}cm/${w}kg <span class="pval">BMI ${parseFloat(lastData.bmi).toFixed(1)}</span></span><span>&#128118; Children <span class="pval">${lastData.children}</span></span><span>&#128684; Smoker <span class="pval">${sm}</span></span><span>&#127760; Region <span class="pval">${rg}</span></span>`;
@@ -637,6 +1000,91 @@ async function runPredict(){
 }
 
 async function downloadReport(){if(!lastResult||!lastResult.advice)return;const res=await fetch('/download-report',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({cost:lastResult.cost,advice:lastResult.advice,age:lastData.age,bmi:lastData.bmi,smoker:lastData.smoker,region:lastData.region})});const blob=await res.blob();const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download='insurance_report.md';a.click();URL.revokeObjectURL(url);}
+
+function handleDrop(e){
+  e.preventDefault();
+  const dz=document.getElementById('dropZone');
+  dz.classList.remove('drag-active');
+  const files=e.dataTransfer.files;
+  if(files.length){
+    document.getElementById('csvFile').files=files;
+    uploadBatch();
+  }
+}
+
+async function uploadBatch(){
+  const fileInput=document.getElementById('csvFile');
+  const status=document.getElementById('batchStatus');
+  const resultsDiv=document.getElementById('batchResults');
+  if(!fileInput.files.length){return;}
+  const file=fileInput.files[0];
+  status.textContent='Uploading and processing '+file.name+'...';
+  status.style.color='#3b82f6';
+  resultsDiv.innerHTML='';
+
+  const formData=new FormData();
+  formData.append('file',file);
+
+  try{
+    const res=await fetch('/batch_predict',{method:'POST',body:formData});
+    if(!res.ok){const err=await res.json();throw new Error(err.error||'Request failed');}
+    const data=await res.json();
+
+    status.textContent='Done! '+data.summary.successful+' predictions generated.';
+    status.style.color='#10b981';
+
+    const mkStat=(label,val,color,isCount)=>`<div style="background:linear-gradient(135deg,${color}15,${color}08);border:1px solid ${color}30;border-radius:14px;padding:16px 14px;text-align:center;"><div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;font-weight:600;margin-bottom:6px;">${label}</div><div style="font-size:22px;font-weight:800;color:${color};letter-spacing:-0.5px;">${isCount?val:('$'+val.toLocaleString())}</div></div>`;
+    let html='<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:20px;">';
+    html+=mkStat('Total',data.summary.total,'#3b82f6',true);
+    html+=mkStat('Success',data.summary.successful,'#10b981',true);
+    html+=mkStat('Mean Cost',data.summary.mean_prediction,'#8b5cf6',false);
+    html+=mkStat('Max Cost',data.summary.max_prediction,'#f59e0b',false);
+    html+='</div>';
+
+    html+='<div style="background:var(--surface2);border:1px solid var(--border);border-radius:14px;overflow:hidden;">';
+    html+='<div style="display:grid;grid-template-columns:40px 60px 60px 60px 100px 1fr 140px;gap:10px;padding:12px 16px;background:rgba(59,130,246,0.05);border-bottom:1px solid var(--border);font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:0.5px;font-weight:700;">';
+    html+='<span>#</span><span>Age</span><span>Sex</span><span>BMI</span><span>Smoker</span><span>Top SHAP Feature</span><span style="text-align:right;">Predicted Cost</span></div>';
+    html+='<div style="max-height:340px;overflow-y:auto;">';
+    data.results.forEach((r,i) => {
+      if(r.error){
+        html+=`<div style="padding:10px 16px;color:#ef4444;font-size:12px;border-bottom:1px solid var(--border);">Row ${i+1} error: ${r.error}</div>`;
+      }else{
+        const isSmoker=r.smoker==='yes';
+        const smokeTag=isSmoker
+          ? '<span style="background:rgba(239,68,68,0.12);color:#f87171;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;">YES</span>'
+          : '<span style="background:rgba(16,185,129,0.12);color:#34d399;padding:2px 8px;border-radius:6px;font-size:10px;font-weight:700;">NO</span>';
+        html+=`<div style="display:grid;grid-template-columns:40px 60px 60px 60px 100px 1fr 140px;gap:10px;padding:10px 16px;border-bottom:1px solid rgba(255,255,255,0.03);font-size:13px;align-items:center;transition:background 0.15s;" onmouseover="this.style.background='rgba(59,130,246,0.04)';" onmouseout="this.style.background='';">
+          <span style="color:var(--text3);font-weight:600;">${i+1}</span>
+          <span style="color:var(--text);">${r.age}</span>
+          <span style="color:var(--text);">${r.sex}</span>
+          <span style="color:var(--text);">${r.bmi}</span>
+          <span>${smokeTag}</span>
+          <span style="color:var(--text2);font-size:12px;">${r.top_shap_feature}</span>
+          <span style="text-align:right;font-weight:700;color:${isSmoker?'#f87171':'#60a5fa'};font-size:15px;">$${r.predicted_cost.toLocaleString()}</span>
+        </div>`;
+      }
+    });
+    html+='</div></div>';
+    html+=`<button class="btn-download" style="background:linear-gradient(135deg,#06b6d4,#22d3ee);margin-top:16px;box-shadow:0 8px 20px rgba(6,182,212,0.25);color:white;border:none;font-weight:600;" onclick="downloadBatchCsv()">&#11015; Download Full Results (CSV)</button>`;
+    resultsDiv.innerHTML=html;
+    window._lastBatchFile=file;
+  }catch(e){
+    status.textContent='Error: '+e.message;
+    status.style.color='#ef4444';
+  }
+}
+
+async function downloadBatchCsv(){
+  const file=window._lastBatchFile;
+  if(!file){return;}
+  const formData=new FormData();
+  formData.append('file',file);
+  const res=await fetch('/batch_predict?format=csv',{method:'POST',body:formData});
+  const blob=await res.blob();
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='batch_predictions.csv';a.click();
+  URL.revokeObjectURL(url);
+}
 
 function animateNumber(id,target){const el=document.getElementById(id);const duration=1000;const start=performance.now();function update(now){const p=Math.min((now-start)/duration,1);const ease=1-Math.pow(1-p,3);el.textContent='$'+Math.round(target*ease).toLocaleString();if(p<1)requestAnimationFrame(update);}requestAnimationFrame(update);}
 

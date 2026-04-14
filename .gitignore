@@ -27,3 +27,18 @@ Desktop.ini
 
 # Root duplicate
 /eda.ipynb
+
+# Claude Code internal state
+.claude/
+
+# Test / coverage artifacts
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Word temp lock files
+~$*.docx
+~$*.doc
+
+# Generated helper scripts (one-off, not shipped)
+generate_report.py
