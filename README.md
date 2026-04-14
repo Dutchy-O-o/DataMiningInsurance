@@ -1,76 +1,66 @@
 # Smart Insurance Advisor V2.0
 
 [![Python](https://img.shields.io/badge/python-3.11%2B-blue.svg)](https://www.python.org/)
-[![Flask](https://img.shields.io/badge/flask-3.0%2B-black.svg)](https://flask.palletsprojects.com/)
+[![Flask](https://img.shields.io/badge/flask-3.1-black.svg)](https://flask.palletsprojects.com/)
 [![XGBoost](https://img.shields.io/badge/XGBoost-R²_0.88-orange.svg)](https://xgboost.readthedocs.io/)
 [![SHAP](https://img.shields.io/badge/SHAP-Explainable_AI-purple.svg)](https://shap.readthedocs.io/)
-[![Tests](https://img.shields.io/badge/tests-22_passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-23_passing-brightgreen.svg)](#testing)
 [![Docker](https://img.shields.io/badge/docker-ready-2496ED.svg)](https://www.docker.com/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](#)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](#license)
 
-An end-to-end data mining pipeline that predicts annual insurance claim costs using ensemble machine learning, explains predictions with SHAP (Explainable AI), finds similar historical patients via KNN, supports batch CSV predictions, and delivers personalized health advice through Claude AI — all wrapped in a custom Flask web application.
-
----
-
-## System Architecture
-
-![Architecture Diagram](DataSet/results/architecture_diagram.png)
-
-**Four-layer design:** User Interface → Flask Application → Machine Learning → Data & Storage. DevOps automation (Docker, CI/CD, pytest) supports the entire stack.
+An end-to-end data mining pipeline that predicts annual insurance claim costs, explains every prediction with SHAP, finds similar historical patients via KNN, supports batch CSV predictions, and delivers personalized health advice through Claude AI — all in a custom Flask web application.
 
 ---
 
-## Key Features
+## Quick Start
 
-### Machine Learning
-- **5 models trained & compared:** XGBoost (best), LightGBM, GradientBoosting, Ridge, Linear Regression
-- **Hyperparameter optimization:** RandomizedSearchCV with 40 iterations × 5-fold CV = 600 model fits
-- **Hybrid preprocessing:** Log-transform for linear models, raw target for boosting models
-- **Feature engineering:** smoker×BMI and smoker×age interaction features
-- **Best model:** XGBoost with R²=0.8812, RMSE=$4,295, MAE=$2,498
+### Option A — Local Python (recommended for development)
 
-### Explainable AI
-- **SHAP TreeExplainer** integrated for per-prediction feature attribution
-- **Animated SHAP bar charts** rendered in pure CSS (no matplotlib dependency at runtime)
-- **Global feature importance** analysis (smoking = 82.6% importance)
+```bash
+# 1. Clone and enter
+git clone https://github.com/Dutchy-O-o/DataMiningInsurance.git
+cd DataMiningInsurance
 
-### Web Application
-- **Real-time predictions** with animated cost counter
-- **Multi-model confidence interval** (Low/Mid/High from 3 boosting models)
-- **What-If Scenarios** — counterfactual analysis ("If you quit smoking: save $X")
-- **Similar Patients (KNN)** — 5 most similar training records with actual costs
-- **Batch CSV Prediction** — upload a CSV, get predictions + top SHAP feature per row
-- **Claude AI Reports** — LLM-generated personalized health advice using SHAP context
+# 2. Create virtual environment
+python -m venv venv
 
-### DevOps
-- **Docker** — one-command deployment with `docker-compose up`
-- **GitHub Actions CI/CD** — automated testing on every push (matrix: Python 3.11, 3.12)
-- **22 pytest unit/integration tests** covering preprocessing, models, and endpoints
-- **Cloud-ready** — deployment guides for Render, Railway (see [DEPLOYMENT.md](DEPLOYMENT.md))
+# Windows
+venv\Scripts\activate
+# macOS / Linux
+source venv/bin/activate
 
----
+# 3. Install dependencies
+pip install -r requirements.txt
 
-## Model Performance
+# 4. (Optional) Enable Claude AI reports
+echo "ANTHROPIC_API_KEY=sk-ant-your-key-here" > .env
 
-| Rank | Model              | R²       | RMSE ($) | MAE ($) |
-|------|--------------------|----------|----------|---------|
-| 1    | **XGBoost**        | **0.8812** | **4,295** | **2,498** |
-| 2    | GradientBoosting   | 0.8775   | 4,361    | 2,467   |
-| 3    | LightGBM           | 0.8755   | 4,396    | 2,583   |
-| 4    | Ridge Regression   | 0.8396   | 4,990    | 2,518   |
-| 5    | Linear Regression  | 0.8377   | 5,020    | 2,526   |
+# 5. Run it
+python run.py
+```
 
-### Feature Importance (XGBoost)
+The browser opens automatically at **http://localhost:5000**.
 
-![Feature Importance](DataSet/results/feature_importance.png)
+### Option B — Docker (one command, production-grade)
 
-**Key insight:** Smoking alone accounts for 82.6% of prediction importance — 5× the sum of all other features combined.
+```bash
+# Build and run in one step
+docker-compose up -d
 
-### Residuals vs Predicted
+# Or manually
+docker build -t smart-insurance-advisor .
+docker run -p 5000:5000 smart-insurance-advisor
+```
 
-![Residuals vs Predicted](DataSet/results/residuals_vs_predicted.png)
+Open **http://localhost:5000**.
 
-Approximately homoskedastic residuals centered around zero, with most predictions within ±$5,000.
+### Option C — Run tests
+
+```bash
+pytest tests/ -v
+```
+
+You should see **23 passed** in about 25-30 seconds.
 
 ---
 
@@ -78,70 +68,108 @@ Approximately homoskedastic residuals centered around zero, with most prediction
 
 ```
 DataMiningInsurance/
-├── README.md                           # This file
-├── DEPLOYMENT.md                       # Cloud deployment guide
-├── Dockerfile                          # Production container
-├── docker-compose.yml                  # One-command orchestration
-├── requirements.txt                    # Python dependencies
-├── pytest.ini                          # Test configuration
-├── presentation.html                   # 49-slide project presentation
-├── report.md                           # IEEE-format research report (markdown)
-├── Insurance_Cost_Prediction_IEEE_Report.docx  # Word IEEE report
+│
+├── run.py                     # Entry point: python run.py
+├── requirements.txt           # Pinned dependencies
+├── Dockerfile                 # Production container
+├── docker-compose.yml         # One-command orchestration
+├── pytest.ini                 # Test configuration
+├── .env.example               # Template for Anthropic API key
+│
+├── data/                      # Raw + processed data + plots
+│   ├── insurance.csv          # Original dataset (1,338 records)
+│   ├── processed/             # 80/20 train-test split CSVs
+│   └── results/               # 14 EDA & evaluation plots (PNG)
+│
+├── models/                    # Trained model artefacts (.joblib)
+│   ├── xgboost.joblib         # Primary model (R² = 0.88)
+│   ├── lightgbm.joblib
+│   ├── gradient_boosting.joblib
+│   ├── ridge_regression.joblib
+│   ├── linear_regression.joblib
+│   └── feature_names.joblib
+│
+├── notebooks/
+│   └── eda.ipynb              # Exploratory data analysis
+│
+├── src/                       # ML pipeline (run once to retrain)
+│   ├── config.py              # All file paths in one place
+│   ├── preprocessing.py       # IQR clipping, encoding, scaling, split
+│   ├── training.py            # 5-model training + RandomizedSearchCV
+│   └── evaluation.py          # Metrics + plots
+│
+├── webapp/                    # Flask app, split by responsibility
+│   ├── __init__.py            # create_app() factory
+│   ├── routes.py              # REST endpoints
+│   ├── features.py            # Scaling + interaction features
+│   ├── ml_service.py          # predict, SHAP, what-if scenarios
+│   ├── similarity.py          # Smoker-stratified weighted KNN
+│   ├── ai_service.py          # Claude API wrapper
+│   ├── dashboard.py           # Precomputed stats + model leaderboard
+│   ├── templates/
+│   │   └── index.html         # Main UI
+│   └── static/
+│       ├── style.css          # Dark/light theme
+│       └── app.js             # Frontend logic
+│
+├── tests/                     # 23 pytest tests
+│   ├── test_preprocessing.py  # IQR + encoding sanity checks
+│   ├── test_models.py         # Model loading + monotonicity
+│   └── test_app_endpoints.py  # Flask integration tests
 │
 ├── .github/workflows/
-│   └── ci.yml                          # GitHub Actions CI/CD pipeline
+│   └── ci.yml                 # GitHub Actions CI/CD
 │
-├── tests/                              # pytest test suite (22 tests)
-│   ├── test_preprocessing.py           # Outlier handling & encoding
-│   ├── test_models.py                  # Model loading & sanity checks
-│   └── test_app_endpoints.py           # Flask endpoint integration tests
-│
-└── DataSet/
-    ├── insurance.csv                   # Raw dataset (1,338 rows)
-    ├── eda.ipynb                       # Exploratory Data Analysis
-    ├── preprocessing.py                # IQR outlier + encoding + scaling
-    ├── models.py                       # 5-model training with RandomizedSearchCV
-    ├── evaluation.py                   # Metrics + visualization
-    ├── app.py                          # Flask web app (654 lines)
-    │
-    ├── processed/                      # Train/test splits (CSV)
-    ├── saved_models/                   # 5 trained models + feature names (.joblib)
-    └── results/                        # 13 evaluation & EDA charts (PNG)
+├── README.md
+├── DEPLOYMENT.md              # Cloud deployment guide (Render, Railway)
+├── report.md                  # IEEE-format technical paper
+├── presentation.html          # 57-slide project presentation
+└── Insurance_Cost_Prediction_IEEE_Report.docx
 ```
 
 ---
 
-## Quick Start
+## How It Works
 
-### Option A: Local Python
+### The ML Pipeline (one-time training)
 
-```bash
-# Clone and enter
-git clone https://github.com/Dutchy-O-o/DataMiningInsurance.git
-cd DataMiningInsurance
-
-# Install dependencies
-python -m venv venv
-venv\Scripts\activate   # or: source venv/bin/activate
-pip install -r requirements.txt
-
-# (Optional) Add Claude API key for AI reports
-echo "ANTHROPIC_API_KEY=sk-ant-..." > DataSet/.env
-
-# Run the web app
-cd DataSet
-python app.py
-```
-
-Open `http://localhost:5000` in your browser.
-
-### Option B: Docker
+If you want to retrain models from scratch:
 
 ```bash
-docker-compose up -d
+# 1. Preprocess the raw CSV (clips outliers, encodes, scales, saves splits)
+python -m src.preprocessing
+
+# 2. Train all 5 models with hyperparameter search (~5-10 minutes)
+python -m src.training
+
+# 3. Generate evaluation plots (feature importance, residuals, actual vs predicted)
+python -m src.evaluation
 ```
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) for cloud deployment (Render, Railway).
+> Models are already trained and committed — you only need this if you changed `src/` code.
+
+### The Web App (runtime)
+
+When you run `python run.py`, the web app:
+
+1. Loads XGBoost + 4 ensemble models from `models/`
+2. Initializes SHAP TreeExplainer
+3. Fits two KNN models (smoker / non-smoker) for similar-patient lookup
+4. Precomputes dataset stats + 5-model leaderboard for the welcome screen
+5. Starts Flask on port 5000 and opens your browser
+
+### What the user sees
+
+| Feature | What it does |
+|---------|--------------|
+| **Cost Prediction** | Animated counter showing predicted annual insurance charge |
+| **Confidence Interval** | Low / Mid / High from 3 boosting models |
+| **SHAP Breakdown** | Dollar-level contribution of each feature, as animated bars |
+| **What-If Scenarios** | "If you quit smoking you'd save $X" (uses counterfactual predictions) |
+| **Similar Patients** | 5 real training records with same smoker status, ranked by weighted distance |
+| **Batch CSV Prediction** | Drag-drop a CSV; get predictions + top SHAP feature per row |
+| **AI Report** | Claude Haiku writes a personalized health optimization report using SHAP context |
+| **Dark / Light Mode** | Toggle button top-right, persisted in `localStorage` |
 
 ---
 
@@ -159,20 +187,42 @@ See [DEPLOYMENT.md](DEPLOYMENT.md) for cloud deployment (Render, Railway).
 | `region`   | 4-class     | NE/NW/SE/SW    | US region                    |
 | `charges`  | **Float**   | **$1,122–$63,770** | **Annual insurance cost (TARGET)** |
 
-**Stats:** 1,338 records · 0 missing values · 0 duplicates · Target skewness 1.52.
+1,338 records · 0 missing values · 0 duplicates · target skewness 1.52.
+
+---
+
+## Model Performance
+
+| Rank | Model              | R²       | RMSE ($) | MAE ($) |
+|------|--------------------|----------|----------|---------|
+| 1    | **XGBoost**        | **0.8812** | **4,295** | **2,498** |
+| 2    | Gradient Boosting  | 0.8775   | 4,361    | 2,467   |
+| 3    | LightGBM           | 0.8755   | 4,396    | 2,583   |
+| 4    | Ridge Regression   | 0.8396   | 4,990    | 2,518   |
+| 5    | Linear Regression  | 0.8377   | 5,020    | 2,526   |
+
+![Feature Importance](data/results/feature_importance.png)
+
+---
+
+## Architecture
+
+![Architecture](data/results/architecture_diagram.png)
+
+Three-stage horizontal flow: **Input** → **Flask Processing** → **Output**. The Flask core contains the feature pipeline, safety layer, XGBoost+SHAP, KNN similarity, and ensemble confidence. Supporting foundation: CSV data, 5 joblib models, Docker, GitHub Actions CI, pytest.
 
 ---
 
 ## Key Findings
 
 1. **Smoker dominates** — 82.6% feature importance, 3.8× cost multiplier ($32,050 vs $8,434)
-2. **Three cost clusters** — smoker×BMI interaction creates non-linear bands visible in scatter plots
+2. **Three cost clusters** — the smoker×BMI interaction creates non-linear cost bands visible in scatter plots
 3. **Boosting >> Linear** — XGBoost R²=0.88 beats Linear R²=0.84 by capturing interactions
 4. **Log transform is model-dependent** — helps linear (skewness 1.52→-0.12), harms boosting (expm1 amplifies errors)
 5. **Model-specific preprocessing wins** — one-size-fits-all pipelines leave accuracy on the table
-6. **SHAP makes predictions actionable** — "smoking adds $12K to your cost" is far more useful than just a number
+6. **SHAP makes predictions actionable** — "smoking adds $12K to your cost" beats an opaque number
 
-See the full analysis in [`report.md`](report.md) or the IEEE-format Word report.
+Full analysis in [`report.md`](report.md) or the [IEEE Word report](Insurance_Cost_Prediction_IEEE_Report.docx).
 
 ---
 
@@ -182,67 +232,98 @@ See the full analysis in [`report.md`](report.md) or the IEEE-format Word report
 pytest tests/ -v
 ```
 
-The 22-test suite covers:
-- **Preprocessing** — IQR outlier detection, clipping invariants, dataset integrity
-- **Models** — loading, prediction shape, smoker monotonicity, reproducibility
-- **Endpoints** — `/predict`, `/batch_predict`, `/similar`, `/api/stats`, error handling
+The 23-test suite covers:
+
+| Module | Tests | What it checks |
+|--------|-------|----------------|
+| `test_preprocessing.py` | 7 | IQR outlier detection, clipping invariants, dataset integrity |
+| `test_models.py` | 7 | Model loading, smoker-monotonicity, reproducibility |
+| `test_app_endpoints.py` | 9 | `/predict`, `/batch_predict`, `/similar`, `/api/stats`, error paths, smoker stratification |
+
+Expected output:
 
 ```
 tests/test_preprocessing.py ..........  7 passed
 tests/test_models.py .................  7 passed
-tests/test_app_endpoints.py ..........  8 passed
-=========================== 22 passed in 27s ===========================
+tests/test_app_endpoints.py ..........  9 passed
+=========================== 23 passed in 27s ===========================
+```
+
+---
+
+## REST API
+
+Once running, the app exposes these endpoints:
+
+| Method | Path | Description |
+|--------|------|-------------|
+| GET  | `/`              | Web UI |
+| GET  | `/api/stats`     | Dataset statistics + model leaderboard |
+| POST | `/predict`       | Full prediction (cost + SHAP + confidence + similar + AI advice) |
+| POST | `/similar`       | 5 nearest patients (smoker-stratified KNN) |
+| POST | `/batch_predict` | CSV upload, returns per-row predictions + top SHAP feature |
+| POST | `/download-report` | Exports the AI report as markdown |
+
+Example request:
+
+```bash
+curl -X POST http://localhost:5000/predict \
+  -H "Content-Type: application/json" \
+  -d '{"age":35,"sex":"male","bmi":27.5,"children":1,"smoker":"no","region":"southeast"}'
 ```
 
 ---
 
 ## Technologies
 
-| Category              | Technologies                                             |
-|-----------------------|----------------------------------------------------------|
-| **Language**          | Python 3.11+                                             |
-| **Data Analysis**     | pandas, numpy, matplotlib, seaborn                       |
-| **Machine Learning**  | scikit-learn, XGBoost, LightGBM                          |
-| **Explainable AI**    | SHAP (TreeExplainer)                                     |
-| **Generative AI**     | Anthropic Claude Haiku API                               |
-| **Web Application**   | Flask, HTML5, CSS3, Vanilla JavaScript                   |
-| **Testing**           | pytest, pytest-cov                                       |
-| **DevOps**            | Docker, docker-compose, GitHub Actions                   |
-| **Serialization**     | joblib                                                   |
+| Layer | Stack |
+|-------|-------|
+| **Language** | Python 3.11+ |
+| **Data** | pandas, numpy |
+| **ML** | scikit-learn, XGBoost, LightGBM, joblib |
+| **XAI** | SHAP (TreeExplainer) |
+| **AI** | Anthropic Claude Haiku |
+| **Web** | Flask, vanilla HTML/CSS/JS (no framework) |
+| **Testing** | pytest, pytest-cov |
+| **DevOps** | Docker, docker-compose, GitHub Actions |
+| **Visualization** | matplotlib, seaborn (for plots generated offline) |
 
 ---
 
 ## Documentation
 
-- **[report.md](report.md)** — Full IEEE-format technical paper (markdown source)
-- **[Insurance_Cost_Prediction_IEEE_Report.docx](Insurance_Cost_Prediction_IEEE_Report.docx)** — Word version (two-column IEEE layout)
-- **[presentation.html](presentation.html)** — 49-slide project presentation (open in browser)
-- **[DEPLOYMENT.md](DEPLOYMENT.md)** — Deployment guide (local, Docker, Render, Railway)
+- **[report.md](report.md)** — Full IEEE-format technical paper (markdown)
+- **[Insurance_Cost_Prediction_IEEE_Report.docx](Insurance_Cost_Prediction_IEEE_Report.docx)** — Two-column IEEE Word version
+- **[presentation.html](presentation.html)** — 57-slide project walkthrough (open in browser)
+- **[DEPLOYMENT.md](DEPLOYMENT.md)** — Cloud deployment guide (Render, Railway)
 
 ---
 
-## Contributing
+## Troubleshooting
 
-Pull requests are welcome. For major changes, please open an issue first to discuss.
+### "ModuleNotFoundError: No module named 'webapp'"
+Run from the repo root (`python run.py`), not from inside `webapp/`.
 
-### Development Workflow
-
+### "InconsistentVersionWarning" when loading models
+Your pip installed different versions than what trained the models. Reinstall with:
 ```bash
-# Install dev dependencies
 pip install -r requirements.txt
+```
 
-# Run tests before committing
-pytest tests/ -v
+### Docker container starts but only 2 models load
+Same cause as above — versions in `requirements.txt` must match the training environment. The pinned versions in this repo are correct; rebuild with `docker-compose build --no-cache`.
 
-# Run the app locally
-cd DataSet && python app.py
+### Port 5000 already in use
+```bash
+# Pick another port
+PORT=5001 python run.py
 ```
 
 ---
 
 ## License
 
-MIT License — feel free to use this project for learning, research, or production (with attribution).
+MIT License — free to use for learning, research, or production (with attribution).
 
 ---
 
